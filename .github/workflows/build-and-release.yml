@@ -141,10 +141,21 @@ jobs:
         # 创建 local.properties
         echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
         
+        # 调试：检查 gradle wrapper 文件
+        echo "=== Checking Gradle Wrapper ==="
+        ls -la gradlew
+        ls -la gradle/wrapper/
+        file gradle/wrapper/gradle-wrapper.jar
+        
         # 授予 gradlew 执行权限
-        chmod +x ./gradlew || true
+        chmod +x ./gradlew
+        
+        # 验证 gradlew 可执行
+        echo "=== Testing Gradle Wrapper ==="
+        ./gradlew --version
         
         # 构建 Debug APK
+        echo "=== Building APK ==="
         ./gradlew assembleDebug --stacktrace
         
         echo "=== Build Output ==="
