@@ -105,8 +105,9 @@ jobs:
         # 列出下载的内容
         echo "Downloaded artifacts:"
         ls -la downloaded/
+        find downloaded -name "*.jar" | head -10
         
-        # 找到 Android SDK JAR (修复路径)
+        # 找到 Android SDK JAR
         ANDROID_JAR=$(find downloaded -name "*android.jar" -not -name "*sources*" -not -name "*javadoc*" | head -1)
         echo "Android SDK JAR: $ANDROID_JAR"
         
@@ -120,10 +121,14 @@ jobs:
         cp "$ANDROID_JAR" android-example/app/libs/
         
         # 复制 OpenCV Android SDK
+        echo "OpenCV SDK location:"
+        ls -la /tmp/opencv/
+        ls -la /tmp/opencv/OpenCV-android-sdk/
+        
         cp -r /tmp/opencv/OpenCV-android-sdk android-example/app/libs/
         
-        echo "Android example project structure:"
-        find android-example/app/libs -type f | head -20
+        echo "OpenCV Java libs:"
+        find android-example/app/libs/OpenCV-android-sdk -name "*.jar" | head -10
         
         # 复制模板到 assets
         mkdir -p android-example/app/src/main/assets/templates
