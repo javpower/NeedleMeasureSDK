@@ -1,8 +1,12 @@
 package com.edge.vision.core;
 
-import org.opencv.core.*;
-import org.opencv.imgcodecs.Imgcodecs;
-import org.opencv.imgproc.Imgproc;
+import org.bytedeco.opencv.opencv_core.Mat;
+import org.bytedeco.opencv.opencv_core.Point;
+import org.bytedeco.opencv.opencv_core.Rect;
+import org.bytedeco.opencv.opencv_core.Scalar;
+import org.bytedeco.opencv.global.opencv_core;
+import org.bytedeco.opencv.global.opencv_imgcodecs;
+import org.bytedeco.opencv.global.opencv_imgproc;
 
 import java.io.*;
 import java.time.LocalDateTime;
@@ -15,7 +19,7 @@ import java.util.Properties;
  * @author Coder建设
  */
 public class AnalysisTemplate implements Closeable {
-    
+
     private final String templateId;
     private final Mat templateImage;
     private final Mat grayImage;
@@ -32,7 +36,7 @@ public class AnalysisTemplate implements Closeable {
 
     /**
      * 从建模结果创建模板
-     * 
+     *
      * @param id 模板ID
      * @param image 模板图像
      * @param lengthMm 参考长度（毫米）
@@ -45,22 +49,22 @@ public class AnalysisTemplate implements Closeable {
         this.templateId = id;
         this.templateImage = image.clone();
         this.referenceLengthMm = lengthMm;
-        this.referenceTip1 = new Point(tip1.x, tip1.y);
-        this.referenceTip2 = new Point(tip2.x, tip2.y);
+        this.referenceTip1 = new Point(tip1.x(), tip1.y());
+        this.referenceTip2 = new Point(tip2.x(), tip2.y());
         this.tipPatchSize = tipPatchSize;
         this.createdAt = LocalDateTime.now();
 
         // 计算像素比例
         double pixelDist = Math.sqrt(
-            Math.pow(tip2.x - tip1.x, 2) +
-            Math.pow(tip2.y - tip1.y, 2)
+            Math.pow(tip2.x() - tip1.x(), 2) +
+            Math.pow(tip2.y() - tip1.y(), 2)
         );
         this.mmPerPixel = lengthMm / pixelDist;
 
         // 提取灰度图
         this.grayImage = new Mat();
         if (templateImage.channels() >= 3) {
-            Imgproc.cvtColor(templateImage, grayImage, Imgproc.COLOR_BGR2GRAY);
+            opencv_imgproc.cvtColor(templateImage, grayImage, opencv_imgproc.COLOR_BGR2GRAY);
         } else {
             templateImage.copyTo(grayImage);
         }
@@ -69,7 +73,7 @@ public class AnalysisTemplate implements Closeable {
         this.tip1Patch = extractTipPatch(grayImage, tip1);
         this.tip2Patch = extractTipPatch(grayImage, tip2);
     }
-    
+
     /**
      * 使用默认特征块大小创建模板
      */
@@ -80,13 +84,13 @@ public class AnalysisTemplate implements Closeable {
 
     /**
      * 从文件加载模板
-     * 
+     *
      * @param templateFilePath 模板文件路径（PNG格式）
      * @throws RuntimeException 如果加载失败
      */
     public AnalysisTemplate(String templateFilePath) {
         // 读取模板图像
-        this.templateImage = Imgcodecs.imread(templateFilePath);
+        this.templateImage = opencv_imgcodecs.imread(templateFilePath);
         if (templateImage.empty()) {
             throw new RuntimeException("无法加载模板文件: " + templateFilePath);
         }
@@ -100,14 +104,14 @@ public class AnalysisTemplate implements Closeable {
             this.templateId = props.getProperty("template.id", "UNKNOWN");
             this.referenceLengthMm = Double.parseDouble(props.getProperty("needle.length.mm", "0"));
             this.referenceTip1 = new Point(
-                Double.parseDouble(props.getProperty("tip1.x", "0")),
-                Double.parseDouble(props.getProperty("tip1.y", "0"))
+                (int)Double.parseDouble(props.getProperty("tip1.x", "0")),
+                (int)Double.parseDouble(props.getProperty("tip1.y", "0"))
             );
             this.referenceTip2 = new Point(
-                Double.parseDouble(props.getProperty("tip2.x", "0")),
-                Double.parseDouble(props.getProperty("tip2.y", "0"))
+                (int)Double.parseDouble(props.getProperty("tip2.x", "0")),
+                (int)Double.parseDouble(props.getProperty("tip2.y", "0"))
             );
-            this.tipPatchSize = Integer.parseInt(props.getProperty("tip.patch.size", 
+            this.tipPatchSize = Integer.parseInt(props.getProperty("tip.patch.size",
                 String.valueOf(DEFAULT_TIP_PATCH_SIZE)));
         } catch (Exception e) {
             throw new RuntimeException("无法加载模板元数据: " + metaPath, e);
@@ -116,15 +120,15 @@ public class AnalysisTemplate implements Closeable {
         this.createdAt = LocalDateTime.now();
 
         double pixelDist = Math.sqrt(
-            Math.pow(referenceTip2.x - referenceTip1.x, 2) +
-            Math.pow(referenceTip2.y - referenceTip1.y, 2)
+            Math.pow(referenceTip2.x() - referenceTip1.x(), 2) +
+            Math.pow(referenceTip2.y() - referenceTip1.y(), 2)
         );
         this.mmPerPixel = referenceLengthMm / pixelDist;
 
         // 提取灰度图
         this.grayImage = new Mat();
         if (templateImage.channels() >= 3) {
-            Imgproc.cvtColor(templateImage, grayImage, Imgproc.COLOR_BGR2GRAY);
+            opencv_imgproc.cvtColor(templateImage, grayImage, opencv_imgproc.COLOR_BGR2GRAY);
         } else {
             templateImage.copyTo(grayImage);
         }
@@ -133,10 +137,10 @@ public class AnalysisTemplate implements Closeable {
         this.tip1Patch = extractTipPatch(grayImage, referenceTip1);
         this.tip2Patch = extractTipPatch(grayImage, referenceTip2);
     }
-    
+
     /**
      * 从输入流加载模板（适用于Android等资源环境）
-     * 
+     *
      * @param imageInputStream 模板图像输入流
      * @param metaInputStream 元数据输入流
      * @throws RuntimeException 如果加载失败
@@ -144,8 +148,8 @@ public class AnalysisTemplate implements Closeable {
     public AnalysisTemplate(InputStream imageInputStream, InputStream metaInputStream) {
         // 读取模板图像
         byte[] imageBytes = readAllBytes(imageInputStream);
-        this.templateImage = Imgcodecs.imdecode(new MatOfByte(imageBytes), Imgcodecs.IMREAD_COLOR);
-        
+        this.templateImage = opencv_imgcodecs.imdecode(new Mat(imageBytes), opencv_imgcodecs.IMREAD_COLOR);
+
         if (templateImage.empty()) {
             throw new RuntimeException("无法从输入流加载模板图像");
         }
@@ -157,14 +161,14 @@ public class AnalysisTemplate implements Closeable {
             this.templateId = props.getProperty("template.id", "UNKNOWN");
             this.referenceLengthMm = Double.parseDouble(props.getProperty("needle.length.mm", "0"));
             this.referenceTip1 = new Point(
-                Double.parseDouble(props.getProperty("tip1.x", "0")),
-                Double.parseDouble(props.getProperty("tip1.y", "0"))
+                (int)Double.parseDouble(props.getProperty("tip1.x", "0")),
+                (int)Double.parseDouble(props.getProperty("tip1.y", "0"))
             );
             this.referenceTip2 = new Point(
-                Double.parseDouble(props.getProperty("tip2.x", "0")),
-                Double.parseDouble(props.getProperty("tip2.y", "0"))
+                (int)Double.parseDouble(props.getProperty("tip2.x", "0")),
+                (int)Double.parseDouble(props.getProperty("tip2.y", "0"))
             );
-            this.tipPatchSize = Integer.parseInt(props.getProperty("tip.patch.size", 
+            this.tipPatchSize = Integer.parseInt(props.getProperty("tip.patch.size",
                 String.valueOf(DEFAULT_TIP_PATCH_SIZE)));
         } catch (Exception e) {
             throw new RuntimeException("无法从输入流加载模板元数据", e);
@@ -173,15 +177,15 @@ public class AnalysisTemplate implements Closeable {
         this.createdAt = LocalDateTime.now();
 
         double pixelDist = Math.sqrt(
-            Math.pow(referenceTip2.x - referenceTip1.x, 2) +
-            Math.pow(referenceTip2.y - referenceTip1.y, 2)
+            Math.pow(referenceTip2.x() - referenceTip1.x(), 2) +
+            Math.pow(referenceTip2.y() - referenceTip1.y(), 2)
         );
         this.mmPerPixel = referenceLengthMm / pixelDist;
 
         // 提取灰度图
         this.grayImage = new Mat();
         if (templateImage.channels() >= 3) {
-            Imgproc.cvtColor(templateImage, grayImage, Imgproc.COLOR_BGR2GRAY);
+            opencv_imgproc.cvtColor(templateImage, grayImage, opencv_imgproc.COLOR_BGR2GRAY);
         } else {
             templateImage.copyTo(grayImage);
         }
@@ -196,20 +200,21 @@ public class AnalysisTemplate implements Closeable {
      */
     private Mat extractTipPatch(Mat gray, Point tip) {
         int halfSize = tipPatchSize / 2;
-        int x1 = Math.max(0, (int)tip.x - halfSize);
-        int y1 = Math.max(0, (int)tip.y - halfSize);
-        int x2 = Math.min(gray.cols(), (int)tip.x + halfSize);
-        int y2 = Math.min(gray.rows(), (int)tip.y + halfSize);
+        int x1 = Math.max(0, (int)tip.x() - halfSize);
+        int y1 = Math.max(0, (int)tip.y() - halfSize);
+        int x2 = Math.min(gray.cols(), (int)tip.x() + halfSize);
+        int y2 = Math.min(gray.rows(), (int)tip.y() + halfSize);
 
         if (x2 - x1 < tipPatchSize || y2 - y1 < tipPatchSize) {
             // 边界情况，创建空白特征
-            return new Mat(tipPatchSize, tipPatchSize, gray.type(), new Scalar(0));
+            Mat patch = new Mat(tipPatchSize, tipPatchSize, gray.type(), new Scalar(0));
+            return patch;
         }
 
         Rect roi = new Rect(x1, y1, tipPatchSize, tipPatchSize);
         return new Mat(gray, roi).clone();
     }
-    
+
     private byte[] readAllBytes(InputStream is) {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[8192];
@@ -222,23 +227,23 @@ public class AnalysisTemplate implements Closeable {
             throw new RuntimeException("读取输入流失败", e);
         }
     }
-    
+
     /**
      * 保存模板到文件
-     * 
+     *
      * @param outputPath 输出路径（不含扩展名）
      * @return 保存的元数据文件路径
      */
     public String save(String outputPath) {
         String imagePath = outputPath + ".png";
         String metaPath = outputPath + ".meta";
-        
+
         // 保存图像
-        boolean saved = Imgcodecs.imwrite(imagePath, templateImage);
+        boolean saved = opencv_imgcodecs.imwrite(imagePath, templateImage);
         if (!saved) {
             throw new RuntimeException("保存模板图像失败: " + imagePath);
         }
-        
+
         // 保存元数据
         try (FileWriter writer = new FileWriter(metaPath)) {
             writer.write("# 针模板元数据\n");
@@ -246,33 +251,33 @@ public class AnalysisTemplate implements Closeable {
             writer.write("template.created=" +
                 createdAt.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + "\n");
             writer.write("needle.length.mm=" + referenceLengthMm + "\n");
-            writer.write("tip1.x=" + referenceTip1.x + "\n");
-            writer.write("tip1.y=" + referenceTip1.y + "\n");
-            writer.write("tip2.x=" + referenceTip2.x + "\n");
-            writer.write("tip2.y=" + referenceTip2.y + "\n");
+            writer.write("tip1.x=" + referenceTip1.x() + "\n");
+            writer.write("tip1.y=" + referenceTip1.y() + "\n");
+            writer.write("tip2.x=" + referenceTip2.x() + "\n");
+            writer.write("tip2.y=" + referenceTip2.y() + "\n");
             writer.write("tip.patch.size=" + tipPatchSize + "\n");
             writer.write("mm.per.pixel=" + mmPerPixel + "\n");
         } catch (IOException e) {
             throw new RuntimeException("保存模板元数据失败: " + metaPath, e);
         }
-        
+
         return metaPath;
     }
 
     @Override
     public void close() {
-        templateImage.release();
-        grayImage.release();
-        tip1Patch.release();
-        tip2Patch.release();
+        templateImage.close();
+        grayImage.close();
+        tip1Patch.close();
+        tip2Patch.close();
     }
 
     // Getters
     public String getTemplateId() { return templateId; }
     public double getMmPerPixel() { return mmPerPixel; }
     public double getReferenceLengthMm() { return referenceLengthMm; }
-    public Point getReferenceTip1() { return new Point(referenceTip1.x, referenceTip1.y); }
-    public Point getReferenceTip2() { return new Point(referenceTip2.x, referenceTip2.y); }
+    public Point getReferenceTip1() { return new Point(referenceTip1.x(), referenceTip1.y()); }
+    public Point getReferenceTip2() { return new Point(referenceTip2.x(), referenceTip2.y()); }
     public Mat getTip1Patch() { return tip1Patch; }
     public Mat getTip2Patch() { return tip2Patch; }
     public int getTipPatchSize() { return tipPatchSize; }

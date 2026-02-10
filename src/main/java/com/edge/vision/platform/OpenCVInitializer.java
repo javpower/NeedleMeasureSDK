@@ -104,7 +104,7 @@ public class OpenCVInitializer {
             try {
                 // 使用反射加载Android特有的加载器，避免桌面平台编译问题
                 Class<?> androidLoaderClass = Class.forName(
-                    "com.edge.vision.android.AndroidOpenCVLoader");
+                    "com.edge.vision.platform.AndroidOpenCVLoader");
                 loader = (OpenCVLoader) androidLoaderClass
                     .getConstructor(Object.class)
                     .newInstance(context);
@@ -142,7 +142,7 @@ public class OpenCVInitializer {
             
             try {
                 Class<?> androidLoaderClass = Class.forName(
-                    "com.edge.vision.android.AndroidOpenCVLoader");
+                    "com.edge.vision.platform.AndroidOpenCVLoader");
                 loader = (OpenCVLoader) androidLoaderClass
                     .getConstructor(Object.class, boolean.class)
                     .newInstance(context, useStaticLinking);

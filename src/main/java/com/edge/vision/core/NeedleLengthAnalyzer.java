@@ -1,8 +1,12 @@
 package com.edge.vision.core;
 
-import org.opencv.core.*;
-import org.opencv.imgcodecs.Imgcodecs;
-import org.opencv.imgproc.Imgproc;
+import org.bytedeco.opencv.opencv_core.Mat;
+import org.bytedeco.opencv.opencv_core.Point;
+import org.bytedeco.opencv.opencv_core.Scalar;
+import org.bytedeco.opencv.opencv_core.Size;
+import org.bytedeco.opencv.global.opencv_core;
+import org.bytedeco.opencv.global.opencv_imgcodecs;
+import org.bytedeco.opencv.global.opencv_imgproc;
 
 import java.io.Closeable;
 import java.io.InputStream;
@@ -10,7 +14,7 @@ import java.io.InputStream;
 /**
  * 高精度针长度测量分析器
  * 基于单模板的针长度测量工具类
- * 
+ *
  * 支持平台：Windows, Mac, Linux, Android
  * @author Coder建设
  */
@@ -18,20 +22,20 @@ public class NeedleLengthAnalyzer implements Closeable {
 
     private final AnalysisTemplate template;
     private final double[] scales;  // 多尺度匹配的比例数组
-    
+
     /**
      * 使用模板文件路径创建分析器
-     * 
+     *
      * @param templateFilePath 模板文件路径（PNG格式）
      */
     public NeedleLengthAnalyzer(String templateFilePath) {
         this.template = new AnalysisTemplate(templateFilePath);
         this.scales = generateScales(0.6, 1.3, 0.1);
     }
-    
+
     /**
      * 使用输入流创建分析器（适用于Android等资源环境）
-     * 
+     *
      * @param imageInputStream 模板图像输入流
      * @param metaInputStream 元数据输入流
      */
@@ -42,17 +46,17 @@ public class NeedleLengthAnalyzer implements Closeable {
 
     /**
      * 直接使用内存中的模板创建分析器
-     * 
+     *
      * @param template 分析模板
      */
     public NeedleLengthAnalyzer(AnalysisTemplate template) {
         this.template = template;
         this.scales = generateScales(0.6, 1.3, 0.1);
     }
-    
+
     /**
      * 创建分析器并指定多尺度匹配参数
-     * 
+     *
      * @param templateFilePath 模板文件路径
      * @param minScale 最小缩放比例
      * @param maxScale 最大缩放比例
@@ -65,7 +69,7 @@ public class NeedleLengthAnalyzer implements Closeable {
 
     /**
      * 分析目标图像中的针长度
-     * 
+     *
      * @param targetImagePath 目标图像路径
      * @return 测量结果
      * @throws RuntimeException 如果分析失败
@@ -73,7 +77,7 @@ public class NeedleLengthAnalyzer implements Closeable {
     public MeasurementResult analyze(String targetImagePath) {
         long startTime = System.currentTimeMillis();
 
-        Mat target = Imgcodecs.imread(targetImagePath);
+        Mat target = opencv_imgcodecs.imread(targetImagePath);
         if (target.empty()) {
             throw new RuntimeException("无法加载目标图像: " + targetImagePath);
         }
@@ -81,21 +85,21 @@ public class NeedleLengthAnalyzer implements Closeable {
         try {
             return analyzeInternal(target, startTime, targetImagePath);
         } finally {
-            target.release();
+            target.close();
         }
     }
-    
+
     /**
      * 分析目标图像（从字节数组）
      * 适用于Android等从相机获取图像的场景
-     * 
+     *
      * @param imageBytes 图像字节数组
      * @return 测量结果
      */
     public MeasurementResult analyze(byte[] imageBytes) {
         long startTime = System.currentTimeMillis();
 
-        Mat target = Imgcodecs.imdecode(new MatOfByte(imageBytes), Imgcodecs.IMREAD_COLOR);
+        Mat target = opencv_imgcodecs.imdecode(new Mat(imageBytes), opencv_imgcodecs.IMREAD_COLOR);
         if (target.empty()) {
             throw new RuntimeException("无法解码目标图像");
         }
@@ -103,27 +107,32 @@ public class NeedleLengthAnalyzer implements Closeable {
         try {
             return analyzeInternal(target, startTime, null);
         } finally {
-            target.release();
+            target.close();
         }
     }
-    
+
     /**
      * 分析目标图像（从Mat对象）
-     * 
+     *
      * @param target 目标图像Mat（BGR格式）
      * @return 测量结果
      */
     public MeasurementResult analyze(Mat target) {
         long startTime = System.currentTimeMillis();
-        return analyzeInternal(target.clone(), startTime, null);
+        Mat cloned = target.clone();
+        try {
+            return analyzeInternal(cloned, startTime, null);
+        } finally {
+            cloned.close();
+        }
     }
-    
+
     /**
      * 内部分析方法
      */
     private MeasurementResult analyzeInternal(Mat target, long startTime, String originalPath) {
         Mat targetGray = new Mat();
-        Imgproc.cvtColor(target, targetGray, Imgproc.COLOR_BGR2GRAY);
+        opencv_imgproc.cvtColor(target, targetGray, opencv_imgproc.COLOR_BGR2GRAY);
 
         try {
             // 用两个针尖特征块进行全图匹配
@@ -134,7 +143,7 @@ public class NeedleLengthAnalyzer implements Closeable {
 
             // 计算像素长度
             double pixelLen = Math.sqrt(
-                Math.pow(t2.x - t1.x, 2) + Math.pow(t2.y - t1.y, 2)
+                Math.pow(t2.x() - t1.x(), 2) + Math.pow(t2.y() - t1.y(), 2)
             );
 
             // 使用模板的 mmPerPixel 进行换算
@@ -142,7 +151,7 @@ public class NeedleLengthAnalyzer implements Closeable {
 
             // 计算置信度（基于匹配得分和长度合理性）
             double confidence = calculateConfidence(pixelLen, template.getReferenceLengthMm() / template.getMmPerPixel());
-            
+
             long procTime = System.currentTimeMillis() - startTime;
 
             // 保存可视化结果（如果提供了路径）
@@ -154,7 +163,7 @@ public class NeedleLengthAnalyzer implements Closeable {
                 confidence, procTime, template.getTemplateId());
 
         } finally {
-            targetGray.release();
+            targetGray.close();
         }
     }
 
@@ -171,7 +180,7 @@ public class NeedleLengthAnalyzer implements Closeable {
 
         return new Point[] { match1.location, match2.location };
     }
-    
+
     /**
      * 匹配结果内部类
      */
@@ -179,7 +188,7 @@ public class NeedleLengthAnalyzer implements Closeable {
         final Point location;
         final double score;
         final double scale;
-        
+
         MatchResult(Point location, double score, double scale) {
             this.location = location;
             this.score = score;
@@ -189,7 +198,7 @@ public class NeedleLengthAnalyzer implements Closeable {
 
     /**
      * 在全图中搜索最佳匹配位置（多尺度）
-     * 
+     *
      * @param gray 目标灰度图
      * @param feature 特征块
      * @param featureSize 特征块大小
@@ -208,23 +217,27 @@ public class NeedleLengthAnalyzer implements Closeable {
 
             // 缩放特征块
             Mat scaledFeature = new Mat();
-            Imgproc.resize(feature, scaledFeature, new Size(scaledSize, scaledSize));
+            opencv_imgproc.resize(feature, scaledFeature, new Size(scaledSize, scaledSize));
 
             // 全图模板匹配
             Mat result = new Mat();
-            Imgproc.matchTemplate(gray, scaledFeature, result, Imgproc.TM_CCOEFF_NORMED);
+            opencv_imgproc.matchTemplate(gray, scaledFeature, result, opencv_imgproc.TM_CCOEFF_NORMED);
 
             // 找到最大值位置
-            Core.MinMaxLocResult mmr = Core.minMaxLoc(result);
+            double[] minVal = new double[1];
+            double[] maxVal = new double[1];
+            Point minLoc = new Point();
+            Point maxLoc = new Point();
+            opencv_core.minMaxLoc(result, minVal, maxVal, minLoc, maxLoc, null);
 
-            if (mmr.maxVal > bestScore) {
-                bestScore = mmr.maxVal;
+            if (maxVal[0] > bestScore) {
+                bestScore = maxVal[0];
                 bestScale = scale;
-                bestLoc = mmr.maxLoc;
+                bestLoc = new Point(maxLoc.x(), maxLoc.y());
             }
 
-            scaledFeature.release();
-            result.release();
+            scaledFeature.close();
+            result.close();
         }
 
         if (bestLoc == null) {
@@ -233,33 +246,33 @@ public class NeedleLengthAnalyzer implements Closeable {
 
         // 计算特征块中心点
         int actualSize = (int)(featureSize * bestScale);
-        Point center = new Point(bestLoc.x + actualSize / 2.0, bestLoc.y + actualSize / 2.0);
+        Point center = new Point((int)(bestLoc.x() + actualSize / 2.0), (int)(bestLoc.y() + actualSize / 2.0));
 
         return new MatchResult(center, bestScore, bestScale);
     }
-    
+
     /**
      * 计算置信度
-     * 
+     *
      * @param measuredPixelLen 测量的像素长度
      * @param referencePixelLen 参考像素长度
      * @return 置信度 (0.0 - 1.0)
      */
     private double calculateConfidence(double measuredPixelLen, double referencePixelLen) {
         // 基于长度比例的置信度
-        double lengthRatio = Math.min(measuredPixelLen, referencePixelLen) / 
+        double lengthRatio = Math.min(measuredPixelLen, referencePixelLen) /
                             Math.max(measuredPixelLen, referencePixelLen);
-        
+
         // 基础置信度
         double baseConfidence = 0.85;
-        
+
         // 根据长度差异调整
         double adjustedConfidence = baseConfidence * lengthRatio;
-        
+
         // 确保在合理范围内
         return Math.max(0.5, Math.min(0.99, adjustedConfidence));
     }
-    
+
     /**
      * 生成多尺度数组
      */
@@ -274,7 +287,7 @@ public class NeedleLengthAnalyzer implements Closeable {
 
     /**
      * 保存可视化结果
-     * 
+     *
      * @param image 原始图像
      * @param t1 针尖1
      * @param t2 针尖2
@@ -286,38 +299,38 @@ public class NeedleLengthAnalyzer implements Closeable {
         Mat out = image.clone();
 
         // 绘制测量线
-        Imgproc.circle(out, t1, 8, new Scalar(0, 0, 255), -1);
-        Imgproc.circle(out, t1, 10, new Scalar(255, 255, 255), 2);
-        Imgproc.circle(out, t2, 8, new Scalar(0, 0, 255), -1);
-        Imgproc.circle(out, t2, 10, new Scalar(255, 255, 255), 2);
-        Imgproc.line(out, t1, t2, new Scalar(0, 255, 0), 3);
+        opencv_imgproc.circle(out, t1, 8, new Scalar(0, 0, 255, 0), -1, 0, 0);
+        opencv_imgproc.circle(out, t1, 10, new Scalar(255, 255, 255, 0), 2, 0, 0);
+        opencv_imgproc.circle(out, t2, 8, new Scalar(0, 0, 255, 0), -1, 0, 0);
+        opencv_imgproc.circle(out, t2, 10, new Scalar(255, 255, 255, 0), 2, 0, 0);
+        opencv_imgproc.line(out, t1, t2, new Scalar(0, 255, 0, 0), 3, 0, 0);
 
         // 标注
         String label = String.format("%.3f mm", mm);
         int[] baseline = {0};
-        Size textSize = Imgproc.getTextSize(label, Imgproc.FONT_HERSHEY_SIMPLEX, 0.8, 2, baseline);
-        Point textPos = new Point((t1.x + t2.x)/2 - textSize.width/2,
-                                  (t1.y + t2.y)/2 - textSize.height - 10);
+        Size textSize = opencv_imgproc.getTextSize(label, opencv_imgproc.FONT_HERSHEY_SIMPLEX, 0.8, 2, baseline);
+        Point textPos = new Point((t1.x() + t2.x())/2 - textSize.width()/2,
+                                  (t1.y() + t2.y())/2 - textSize.height() - 10);
 
         // 文字背景
-        Imgproc.rectangle(out,
-            new Point(textPos.x - 5, textPos.y - textSize.height - 5),
-            new Point(textPos.x + textSize.width + 5, textPos.y + baseline[0] + 5),
-            new Scalar(0, 0, 0), -1);
+        opencv_imgproc.rectangle(out,
+            new Point(textPos.x() - 5, textPos.y() - textSize.height() - 5),
+            new Point(textPos.x() + textSize.width() + 5, textPos.y() + baseline[0] + 5),
+            new Scalar(0, 0, 0, 0), -1, 0, 0);
 
         // 文字
-        Imgproc.putText(out, label, textPos,
-            Imgproc.FONT_HERSHEY_SIMPLEX, 0.8, new Scalar(0, 255, 255), 2);
+        opencv_imgproc.putText(out, label, textPos,
+            opencv_imgproc.FONT_HERSHEY_SIMPLEX, 0.8, new Scalar(0, 255, 255, 0), 2, 0, false);
 
         // 保存
         String outPath = originalPath.replaceAll("(\\.[^.]+)$", "_analyzed$1");
-        Imgcodecs.imwrite(outPath, out);
-        out.release();
+        opencv_imgcodecs.imwrite(outPath, out);
+        out.close();
     }
-    
+
     /**
      * 生成带测量结果的图像（返回Mat，不保存到文件）
-     * 
+     *
      * @param image 原始图像
      * @param result 测量结果
      * @return 带标注的图像
@@ -328,29 +341,29 @@ public class NeedleLengthAnalyzer implements Closeable {
         Point t2 = result.getTip2();
 
         // 绘制测量线
-        Imgproc.circle(out, t1, 8, new Scalar(0, 0, 255), -1);
-        Imgproc.circle(out, t1, 10, new Scalar(255, 255, 255), 2);
-        Imgproc.circle(out, t2, 8, new Scalar(0, 0, 255), -1);
-        Imgproc.circle(out, t2, 10, new Scalar(255, 255, 255), 2);
-        Imgproc.line(out, t1, t2, new Scalar(0, 255, 0), 3);
+        opencv_imgproc.circle(out, t1, 8, new Scalar(0, 0, 255, 0), -1, 0, 0);
+        opencv_imgproc.circle(out, t1, 10, new Scalar(255, 255, 255, 0), 2, 0, 0);
+        opencv_imgproc.circle(out, t2, 8, new Scalar(0, 0, 255, 0), -1, 0, 0);
+        opencv_imgproc.circle(out, t2, 10, new Scalar(255, 255, 255, 0), 2, 0, 0);
+        opencv_imgproc.line(out, t1, t2, new Scalar(0, 255, 0, 0), 3, 0, 0);
 
         // 标注
         String label = String.format("%.3f mm", result.getLengthMm());
         int[] baseline = {0};
-        Size textSize = Imgproc.getTextSize(label, Imgproc.FONT_HERSHEY_SIMPLEX, 0.8, 2, baseline);
-        Point textPos = new Point((t1.x + t2.x)/2 - textSize.width/2,
-                                  (t1.y + t2.y)/2 - textSize.height - 10);
+        Size textSize = opencv_imgproc.getTextSize(label, opencv_imgproc.FONT_HERSHEY_SIMPLEX, 0.8, 2, baseline);
+        Point textPos = new Point((t1.x() + t2.x())/2 - textSize.width()/2,
+                                  (t1.y() + t2.y())/2 - textSize.height() - 10);
 
         // 文字背景
-        Imgproc.rectangle(out,
-            new Point(textPos.x - 5, textPos.y - textSize.height - 5),
-            new Point(textPos.x + textSize.width + 5, textPos.y + baseline[0] + 5),
-            new Scalar(0, 0, 0), -1);
+        opencv_imgproc.rectangle(out,
+            new Point(textPos.x() - 5, textPos.y() - textSize.height() - 5),
+            new Point(textPos.x() + textSize.width() + 5, textPos.y() + baseline[0] + 5),
+            new Scalar(0, 0, 0, 0), -1, 0, 0);
 
         // 文字
-        Imgproc.putText(out, label, textPos,
-            Imgproc.FONT_HERSHEY_SIMPLEX, 0.8, new Scalar(0, 255, 255), 2);
-            
+        opencv_imgproc.putText(out, label, textPos,
+            opencv_imgproc.FONT_HERSHEY_SIMPLEX, 0.8, new Scalar(0, 255, 255, 0), 2, 0, false);
+
         return out;
     }
 
@@ -358,7 +371,7 @@ public class NeedleLengthAnalyzer implements Closeable {
     public void close() {
         template.close();
     }
-    
+
     /**
      * 获取模板信息
      */

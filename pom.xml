@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
                              http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
@@ -11,64 +11,189 @@
     <packaging>jar</packaging>
 
     <name>Needle Measure SDK</name>
-    <description>Cross-platform needle length measurement SDK using OpenCV</description>
-    <url>https://github.com/edgevision/needle-measure-sdk</url>
+    <description>Cross-platform needle length measurement SDK based on JavaCV/OpenCV</description>
+    <url>https://github.com/your-org/needle-measure-sdk</url>
 
     <licenses>
         <license>
-            <name>Apache License, Version 2.0</name>
-            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <name>Apache License 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0</url>
         </license>
     </licenses>
-
-    <developers>
-        <developer>
-            <id>edgevision</id>
-            <name>Edge Vision Team</name>
-            <email>dev@edgevision.com</email>
-        </developer>
-    </developers>
 
     <properties>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <opencv.version>4.7.0-0</opencv.version>
-        <junit.version>5.9.2</junit.version>
+        <javacv.version>1.5.9</javacv.version>
+        <opencv.version>4.7.0-${javacv.version}</opencv.version>
     </properties>
 
     <dependencies>
-        <!-- OpenCV - 桌面平台 -->
+        <!-- 编译时依赖（不传递） -->
         <dependency>
-            <groupId>org.openpnp</groupId>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>javacv</artifactId>
+            <version>${javacv.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
             <artifactId>opencv</artifactId>
             <version>${opencv.version}</version>
             <scope>provided</scope>
         </dependency>
 
-        <!-- nu.pattern OpenCV加载器（可选） -->
-        <dependency>
-            <groupId>nu.pattern</groupId>
-            <artifactId>opencv</artifactId>
-            <version>2.4.9-4</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <!-- JUnit 5 测试 -->
+        <!-- 测试依赖 -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>${junit.version}</version>
+            <version>5.9.2</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>javacv-platform</artifactId>
+            <version>${javacv.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
 
+    <!-- 平台选择 Profiles -->
+    <profiles>
+        <!-- 默认：所有平台（包较大，约180MB） -->
+        <profile>
+            <id>all-platforms</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>opencv</artifactId>
+                    <version>${opencv.version}</version>
+                    <classifier>windows-x86_64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>opencv</artifactId>
+                    <version>${opencv.version}</version>
+                    <classifier>linux-x86_64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>opencv</artifactId>
+                    <version>${opencv.version}</version>
+                    <classifier>macosx-x86_64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>opencv</artifactId>
+                    <version>${opencv.version}</version>
+                    <classifier>macosx-arm64</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <!-- Windows x86_64 -->
+        <profile>
+            <id>windows</id>
+            <dependencies>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>opencv</artifactId>
+                    <version>${opencv.version}</version>
+                    <classifier>windows-x86_64</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <!-- Linux x86_64 -->
+        <profile>
+            <id>linux</id>
+            <dependencies>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>opencv</artifactId>
+                    <version>${opencv.version}</version>
+                    <classifier>linux-x86_64</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <!-- macOS Intel -->
+        <profile>
+            <id>macos-intel</id>
+            <dependencies>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>opencv</artifactId>
+                    <version>${opencv.version}</version>
+                    <classifier>macosx-x86_64</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <!-- macOS Apple Silicon -->
+        <profile>
+            <id>macos-arm</id>
+            <dependencies>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>opencv</artifactId>
+                    <version>${opencv.version}</version>
+                    <classifier>macosx-arm64</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <!-- Android 所有架构 -->
+        <profile>
+            <id>android</id>
+            <dependencies>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>opencv</artifactId>
+                    <version>${opencv.version}</version>
+                    <classifier>android-arm</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>opencv</artifactId>
+                    <version>${opencv.version}</version>
+                    <classifier>android-arm64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>opencv</artifactId>
+                    <version>${opencv.version}</version>
+                    <classifier>android-x86</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>opencv</artifactId>
+                    <version>${opencv.version}</version>
+                    <classifier>android-x86_64</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <!-- Android arm64 only（最常用） -->
+        <profile>
+            <id>android-arm64</id>
+            <dependencies>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>opencv</artifactId>
+                    <version>${opencv.version}</version>
+                    <classifier>android-arm64</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+
     <build>
-        <sourceDirectory>src/main/java</sourceDirectory>
-        <testSourceDirectory>src/test/java</testSourceDirectory>
-        
         <plugins>
-            <!-- 编译插件 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -78,23 +203,24 @@
                     <target>1.8</target>
                 </configuration>
             </plugin>
-
-            <!-- 源码打包 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.1.2</version>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
-                <version>3.2.1</version>
+                <version>3.3.0</version>
                 <executions>
                     <execution>
                         <id>attach-sources</id>
                         <goals>
-                            <goal>jar</goal>
+                            <goal>jar-no-fork</goal>
                         </goals>
                     </execution>
                 </executions>
             </plugin>
-
-            <!-- Javadoc打包 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
@@ -108,29 +234,6 @@
                     </execution>
                 </executions>
             </plugin>
-
-            <!-- 测试插件 -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.0.0</version>
-            </plugin>
         </plugins>
     </build>
-
-    <!-- 
-        注意：Android 项目使用此 SDK 时，需要自行实现 AndroidOpenCVLoader
-        参考实现位于：android-example/app/src/main/java/com/example/needleapp/
-    -->
-
-    <repositories>
-        <repository>
-            <id>maven-central</id>
-            <url>https://repo.maven.apache.org/maven2</url>
-        </repository>
-        <repository>
-            <id>sonatype-snapshots</id>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-        </repository>
-    </repositories>
 </project>

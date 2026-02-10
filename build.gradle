@@ -10,7 +10,7 @@ version = '1.0.0'
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
-    
+
     withSourcesJar()
     withJavadocJar()
 }
@@ -21,13 +21,14 @@ repositories {
 
 // JavaCV 版本
 ext.javacvVersion = '1.5.9'
-ext.opencvVersion = '4.7.0'
+ext.opencvVersion = '4.7.0-' + javacvVersion
 
 dependencies {
-    // 基础 OpenCV 接口（编译时）
-    compileOnly "org.bytedeco:javacv-platform:${javacvVersion}"
-    
-    // 测试依赖
+    // 编译时依赖（不打包）
+    compileOnly "org.bytedeco:javacv:${javacvVersion}"
+    compileOnly "org.bytedeco:opencv:${opencvVersion}"
+
+    // 测试依赖 - 使用 javacv-platform 自动包含所有平台
     testImplementation 'org.junit.jupiter:junit-jupiter:5.9.2'
     testImplementation "org.bytedeco:javacv-platform:${javacvVersion}"
 }
@@ -42,7 +43,7 @@ sourceSets {
             srcDirs = ['src/main/resources']
         }
     }
-    
+
     test {
         java {
             srcDirs = ['src/test/java']
@@ -50,25 +51,38 @@ sourceSets {
     }
 }
 
-// 任务：创建桌面平台 jar（全平台支持）
-task desktopJar(type: Jar) {
-    archiveClassifier = 'desktop'
+// ============ 基础 JAR 任务 ============
+
+// 任务：创建基础 SDK JAR（不含依赖）
+task sdkJar(type: Jar) {
+    archiveClassifier = 'sdk'
     from sourceSets.main.output
-    
     manifest {
         attributes(
-            'Implementation-Title': 'Needle Measure SDK - Desktop (All Platforms)',
+            'Implementation-Title': 'Needle Measure SDK',
             'Implementation-Version': version,
             'Implementation-Vendor': 'Edge Vision'
         )
     }
 }
 
-// 任务：创建 Android 平台 jar（通用）
+// 任务：创建桌面平台 JAR（基础版）
+task desktopJar(type: Jar) {
+    archiveClassifier = 'desktop'
+    from sourceSets.main.output
+    manifest {
+        attributes(
+            'Implementation-Title': 'Needle Measure SDK - Desktop',
+            'Implementation-Version': version,
+            'Implementation-Vendor': 'Edge Vision'
+        )
+    }
+}
+
+// 任务：创建 Android 平台 JAR
 task androidJar(type: Jar) {
     archiveClassifier = 'android'
     from sourceSets.main.output
-    
     manifest {
         attributes(
             'Implementation-Title': 'Needle Measure SDK - Android',
@@ -78,58 +92,26 @@ task androidJar(type: Jar) {
     }
 }
 
-// 任务：创建桌面平台的 fat-jar（包含 JavaCV 所有平台）
+// ============ 平台特定的 Fat JAR ============
+// 由于 shadow 插件的限制，我们使用运行时参数来选择平台
+
+// 全平台 Fat JAR（默认，包含所有平台）
 shadowJar {
-    archiveClassifier = 'desktop-all'
-    from sourceSets.main.output
-    configurations = [project.configurations.runtimeClasspath]
-    
+    archiveClassifier = 'all-platforms'
     manifest {
         attributes(
-            'Implementation-Title': 'Needle Measure SDK - Desktop (All-in-One)',
+            'Implementation-Title': 'Needle Measure SDK - All Platforms',
             'Implementation-Version': version,
             'Implementation-Vendor': 'Edge Vision'
         )
     }
-    
     mergeServiceFiles()
     exclude 'META-INF/*.DSA'
     exclude 'META-INF/*.RSA'
     exclude 'META-INF/*.SF'
 }
 
-// 任务：创建特定平台的 jar（Windows/Linux/Mac）
-['windows-x86_64', 'linux-x86_64', 'macosx-x86_64', 'macosx-arm64'].each { platform ->
-    task "desktop${platform.replaceAll('-', '')}Jar"(type: Jar) {
-        archiveClassifier = "desktop-${platform}"
-        from sourceSets.main.output
-        
-        manifest {
-            attributes(
-                'Implementation-Title': "Needle Measure SDK - Desktop (${platform})",
-                'Implementation-Version': version,
-                'Implementation-Vendor': 'Edge Vision'
-            )
-        }
-    }
-}
-
-// 任务：创建 Android 特定架构的 jar
-['arm', 'arm64', 'x86', 'x86_64'].each { arch ->
-    task "android${arch.capitalize()}Jar"(type: Jar) {
-        archiveClassifier = "android-${arch}"
-        from sourceSets.main.output
-        
-        manifest {
-            attributes(
-                'Implementation-Title': "Needle Measure SDK - Android (${arch})",
-                'Implementation-Version': version,
-                'Implementation-Vendor': 'Edge Vision'
-            )
-        }
-    }
-}
-
+// ============ 测试 ============
 test {
     useJUnitPlatform()
     testLogging {
@@ -137,125 +119,77 @@ test {
     }
 }
 
-// 任务：创建分发包
-task dist(type: Zip) {
-    dependsOn desktopJar, androidJar, sourcesJar, javadocJar
-    
+// ============ 分发包任务 ============
+
+// 全平台分发包
+task distAllPlatforms(type: Zip) {
+    dependsOn shadowJar, desktopJar, androidJar, sourcesJar, javadocJar
+    archiveFileName = "needle-measure-sdk-${version}-all-platforms.zip"
+    destinationDirectory = file('build/dist')
+
+    from('build/libs') {
+        include "*-all-platforms.jar"
+        include "*-desktop.jar"
+        include "*-android.jar"
+        include "*-sources.jar"
+        include "*-javadoc.jar"
+    }
+    from('docs') { into 'docs' }
+    from('.') { include 'README.md', 'LICENSE', 'RELEASE.md' }
+    from('example-project') { into 'example' }
+    from('android-example') { into 'android-example' }
+    from('template') { into 'template' }
+}
+
+// SDK 基础包
+task distSdk(type: Zip) {
+    dependsOn sdkJar, sourcesJar, javadocJar
     archiveFileName = "needle-measure-sdk-${version}.zip"
     destinationDirectory = file('build/dist')
-    
+
     from('build/libs') {
-        include '*.jar'
+        include "*-sdk.jar"
+        rename { it.replace('-sdk', '') }
     }
-    
-    from('docs') {
-        into 'docs'
-        include '**/*'
+    from('build/libs') {
+        include "*-sources.jar"
     }
-    
-    from('.') {
-        include 'README.md'
-        include 'LICENSE'
-        include 'RELEASE.md'
+    from('build/libs') {
+        include "*-javadoc.jar"
     }
-    
-    from('example-project') {
-        into 'example-project'
-        include '**/*'
-    }
-    
-    from('template') {
-        into 'template'
-        include '**/*'
-    }
+    from('docs') { into 'docs' }
+    from('.') { include 'README.md', 'LICENSE' }
+    from('template') { into 'template' }
 }
 
-// 任务：创建桌面平台完整分发包（开箱即用）
-task distDesktop(type: Zip) {
-    dependsOn desktopJar, shadowJar, sourcesJar, javadocJar
-    
-    archiveFileName = "needle-measure-sdk-${version}-desktop-complete.zip"
-    destinationDirectory = file('build/dist')
-    
-    from('build/libs') {
-        include 'needle-measure-sdk-*.jar'
-    }
-    
-    from('docs') {
-        into 'docs'
-        include '**/*'
-    }
-    
-    from('.') {
-        include 'README.md'
-        include 'LICENSE'
-        include 'RELEASE.md'
-    }
-    
-    from('example-project') {
-        into 'example'
-        include '**/*'
-    }
-    
-    from('template') {
-        into 'template'
-        include '**/*'
-    }
-}
-
-// 任务：创建 Android 平台分发包
+// Android 分发包
 task distAndroid(type: Zip) {
     dependsOn androidJar, sourcesJar, javadocJar
-    
-    archiveFileName = "needle-measure-sdk-${version}-android-complete.zip"
+    archiveFileName = "needle-measure-sdk-${version}-android.zip"
     destinationDirectory = file('build/dist')
-    
+
     from('build/libs') {
-        include 'needle-measure-sdk-*-android*.jar'
-        include 'needle-measure-sdk-*-sources.jar'
-        include 'needle-measure-sdk-*-javadoc.jar'
+        include "*-android.jar"
+        include "*-sources.jar"
+        include "*-javadoc.jar"
     }
-    
-    from('docs') {
-        into 'docs'
-        include '**/*'
-    }
-    
-    from('.') {
-        include 'README.md'
-        include 'LICENSE'
-        include 'RELEASE.md'
-    }
-    
-    from('android-example') {
-        into 'android-example'
-        include '**/*'
-    }
-    
-    from('template') {
-        into 'template'
-        include '**/*'
-    }
+    from('docs') { into 'docs' }
+    from('.') { include 'README.md', 'LICENSE' }
+    from('android-example') { into 'android-example' }
+    from('template') { into 'template' }
 }
 
-// 任务：创建精简分发包
-task distMinimal(type: Zip) {
-    dependsOn desktopJar, androidJar, sourcesJar, javadocJar
-    
-    archiveFileName = "needle-measure-sdk-${version}-minimal.zip"
-    destinationDirectory = file('build/dist')
-    
-    from('build/libs') {
-        include '*.jar'
-    }
-    
-    from('docs') {
-        into 'docs'
-        include '**/*'
-    }
-    
-    from('.') {
-        include 'README.md'
-        include 'LICENSE'
-    }
+// 构建所有分发包
+task distAll {
+    dependsOn distSdk, distAndroid, distAllPlatforms
+}
+
+// 默认 dist 任务
+task dist {
+    dependsOn distAllPlatforms
+}
+
+// 构建所有
+task buildAll {
+    dependsOn build, shadowJar, sdkJar, desktopJar, androidJar
 }

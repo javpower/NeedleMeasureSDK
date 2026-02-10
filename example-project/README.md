@@ -1,6 +1,6 @@
-# Needle Measure SDK 使用示例
+# Needle Measure SDK 桌面端示例
 
-这个项目演示了如何在实际项目中引用本地的 `needle-measure-sdk` jar 文件。
+这个项目演示了如何在桌面应用中使用 Needle Measure SDK（基于 JavaCV）。
 
 ## 项目结构
 
@@ -8,51 +8,37 @@
 example-project/
 ├── build.gradle              # Gradle 构建配置
 ├── settings.gradle           # Gradle 设置
-├── README.md                 # 本文件
-├── libs/                     # 存放本地 jar 文件（需先构建 SDK）
+├── libs/                     # SDK jar 文件（需先构建）
 └── src/main/java/com/example/
     └── ExampleApp.java       # 示例代码
 ```
 
-## 关键配置说明
+## 快速开始
 
-### 1. 引用本地 jar
-
-在 `build.gradle` 中：
-
-```groovy
-dependencies {
-    // 引用本地 jar 文件
-    implementation files('libs/needle-measure-sdk-1.0.0-desktop.jar')
-    
-    // OpenCV 依赖（必须，SDK 本身不包含 OpenCV）
-    implementation 'org.openpnp:opencv:4.7.0-0'
-}
-```
-
-### 2. jar 文件位置
-
-- 方式1：放在项目内的 `libs/` 目录（推荐）
-- 方式2：使用绝对路径引用
-  ```groovy
-  implementation files('/absolute/path/to/needle-measure-sdk-1.0.0-desktop.jar')
-  ```
-- 方式3：放在其他位置，修改 `files()` 中的路径
-
-## 使用步骤
-
-### 1. 先构建 SDK jar
+### 1. 构建 SDK jar
 
 ```bash
 cd /Volumes/macEx/AI/needle-measure-sdk
 ./gradlew desktopJar
-# 生成的 jar 在 build/libs/needle-measure-sdk-1.0.0-desktop.jar
+
+# 复制到示例项目
+cp build/libs/needle-measure-sdk-1.0.0-desktop.jar example-project/libs/
 ```
 
-### 2. 复制 jar 到示例项目
+### 2. 配置 build.gradle
 
-```bash
-cp build/libs/needle-measure-sdk-1.0.0-desktop.jar example-project/libs/
+```groovy
+dependencies {
+    // Needle Measure SDK
+    implementation files('libs/needle-measure-sdk-1.0.0-desktop.jar')
+
+    // JavaCV OpenCV（选择你的平台）
+    implementation 'org.bytedeco:javacv:1.5.9'
+    implementation 'org.bytedeco:opencv:4.7.0-1.5.9:macosx-arm64'  // macOS Apple Silicon
+    // implementation 'org.bytedeco:opencv:4.7.0-1.5.9:macosx-x86_64'  // macOS Intel
+    // implementation 'org.bytedeco:opencv:4.7.0-1.5.9:windows-x86_64'  // Windows
+    // implementation 'org.bytedeco:opencv:4.7.0-1.5.9:linux-x86_64'    // Linux
+}
 ```
 
 ### 3. 运行示例
@@ -62,55 +48,16 @@ cd example-project
 ../gradlew run
 ```
 
-### 方式 2：打包后运行
+## 平台选择
 
-```bash
-cd example-project
-../gradlew fatJar
-java -jar build/libs/example-project-1.0.0-all.jar
-```
+根据你的操作系统选择对应的 JavaCV 依赖：
 
-## 如何在其他项目中使用
-
-### Gradle 项目
-
-```groovy
-dependencies {
-    // 方式1: 本地文件引用
-    implementation files('/path/to/needle-measure-sdk-1.0.0-desktop.jar')
-    
-    // OpenCV 依赖（必须）
-    implementation 'org.openpnp:opencv:4.7.0-0'
-}
-```
-
-### Maven 项目
-
-```xml
-<dependency>
-    <groupId>com.edge.vision</groupId>
-    <artifactId>needle-measure-sdk</artifactId>
-    <version>1.0.0</version>
-    <scope>system</scope>
-    <systemPath>/path/to/needle-measure-sdk-1.0.0-desktop.jar</systemPath>
-</dependency>
-
-<dependency>
-    <groupId>org.openpnp</groupId>
-    <artifactId>opencv</artifactId>
-    <version>4.7.0-0</version>
-</dependency>
-```
-
-### 纯 Java 命令行
-
-```bash
-# 编译
-javac -cp ".:libs/needle-measure-sdk-1.0.0-desktop.jar:/path/to/opencv.jar" YourClass.java
-
-# 运行
-java -cp ".:libs/needle-measure-sdk-1.0.0-desktop.jar:/path/to/opencv.jar" YourClass
-```
+| 平台 | Classifier |
+|------|------------|
+| macOS Apple Silicon | `macosx-arm64` |
+| macOS Intel | `macosx-x86_64` |
+| Windows x64 | `windows-x86_64` |
+| Linux x64 | `linux-x86_64` |
 
 ## 完整使用示例
 
@@ -118,36 +65,150 @@ java -cp ".:libs/needle-measure-sdk-1.0.0-desktop.jar:/path/to/opencv.jar" YourC
 import com.edge.vision.platform.OpenCVInitializer;
 import com.edge.vision.core.NeedleLengthAnalyzer;
 import com.edge.vision.core.MeasurementResult;
+import com.edge.vision.template.TemplateBuilder;
 
-public class YourApp {
+import org.bytedeco.opencv.opencv_core.Mat;
+import org.bytedeco.opencv.global.opencv_imgcodecs;
+
+public class ExampleApp {
     public static void main(String[] args) {
-        // 1. 初始化 OpenCV
+        // 1. 初始化 OpenCV（JavaCV 自动加载）
         OpenCVInitializer.initialize();
-        
-        // 2. 创建分析器（使用模板）
-        try (NeedleLengthAnalyzer analyzer = 
-                new NeedleLengthAnalyzer("path/to/template.png")) {
-            
-            // 3. 测量
-            MeasurementResult result = analyzer.analyze("path/to/image.jpg");
-            
-            // 4. 获取结果
+        System.out.println("JavaCV OpenCV 初始化成功");
+
+        // 2. 使用模板进行测量
+        measureExample();
+
+        // 3. 创建新模板示例
+        // createTemplateExample();
+    }
+
+    static void measureExample() {
+        String templatePath = "path/to/template.png";
+        String targetPath = "path/to/image.jpg";
+
+        try (NeedleLengthAnalyzer analyzer = new NeedleLengthAnalyzer(templatePath)) {
+            MeasurementResult result = analyzer.analyze(targetPath);
+
+            System.out.println("测量完成!");
             System.out.println("长度: " + result.getLengthMm() + " mm");
-            System.out.println("置信度: " + result.getConfidence());
+            System.out.println("置信度: " + (result.getConfidence() * 100) + "%");
             System.out.println("JSON: " + result.toJsonString());
+
+        } catch (Exception e) {
+            System.err.println("测量失败: " + e.getMessage());
         }
+    }
+
+    static void createTemplateExample() {
+        Mat image = opencv_imgcodecs.imread("template_image.jpg");
+
+        TemplateBuilder builder = new TemplateBuilder()
+            .setImage(image)
+            .setReferenceLength(50.0)  // 实际长度 50mm
+            .setTip1(100, 200)         // 针尖1坐标
+            .setTip2(500, 200)         // 针尖2坐标
+            .setTemplateId("needle_50mm");
+
+        builder.buildAndSave("output/needle_template");
+        builder.release();
+        image.close();
+
+        System.out.println("模板创建成功!");
     }
 }
 ```
 
+## 在其他项目中使用
+
+### Gradle 项目
+
+```groovy
+dependencies {
+    implementation files('/path/to/needle-measure-sdk-1.0.0-desktop.jar')
+    implementation 'org.bytedeco:javacv:1.5.9'
+    implementation 'org.bytedeco:opencv:4.7.0-1.5.9:macosx-arm64'  // 你的平台
+}
+```
+
+### Maven 项目
+
+```xml
+<dependencies>
+    <dependency>
+        <groupId>com.edge.vision</groupId>
+        <artifactId>needle-measure-sdk</artifactId>
+        <version>1.0.0</version>
+        <scope>system</scope>
+        <systemPath>/path/to/needle-measure-sdk-1.0.0-desktop.jar</systemPath>
+    </dependency>
+
+    <dependency>
+        <groupId>org.bytedeco</groupId>
+        <artifactId>javacv</artifactId>
+        <version>1.5.9</version>
+    </dependency>
+
+    <dependency>
+        <groupId>org.bytedeco</groupId>
+        <artifactId>opencv</artifactId>
+        <version>4.7.0-1.5.9</version>
+        <classifier>macosx-arm64</classifier>  <!-- 你的平台 -->
+    </dependency>
+</dependencies>
+```
+
+### 使用 Maven Profiles 选择平台
+
+在项目的 pom.xml 中添加 profile：
+
+```xml
+<profiles>
+    <profile>
+        <id>macos-arm</id>
+        <activation>
+            <os>
+                <family>mac</family>
+                <arch>aarch64</arch>
+            </os>
+        </activation>
+        <dependencies>
+            <dependency>
+                <groupId>org.bytedeco</groupId>
+                <artifactId>opencv</artifactId>
+                <version>4.7.0-1.5.9</version>
+                <classifier>macosx-arm64</classifier>
+            </dependency>
+        </dependencies>
+    </profile>
+
+    <profile>
+        <id>windows</id>
+        <activation>
+            <os>
+                <family>windows</family>
+            </os>
+        </activation>
+        <dependencies>
+            <dependency>
+                <groupId>org.bytedeco</groupId>
+                <artifactId>opencv</artifactId>
+                <version>4.7.0-1.5.9</version>
+                <classifier>windows-x86_64</classifier>
+            </dependency>
+        </dependencies>
+    </profile>
+</profiles>
+```
+
 ## 注意事项
 
-1. **OpenCV 依赖**：SDK 本身不包含 OpenCV，使用时必须单独添加 OpenCV 依赖
-2. **平台兼容**：桌面版 jar 适用于 Windows、Mac、Linux
-3. **模板文件**：需要准备模板图像（.png）和元数据文件（.meta）
+1. **JavaCV 自动加载**：无需手动加载原生库，JavaCV 会自动处理
+2. **平台选择**：确保选择正确的平台 classifier
+3. **资源释放**：使用 `try-with-resources` 或手动调用 `close()` 释放资源
 
 ## 更多文档
 
 - [SDK 主 README](../README.md)
-- [集成指南](../docs/INTEGRATION_GUIDE.md)
-- [架构文档](../docs/ARCHITECTURE.md)
+- [Android 示例](../android-example/README.md)
+- [JavaCV 官方文档](https://github.com/bytedeco/javacv)

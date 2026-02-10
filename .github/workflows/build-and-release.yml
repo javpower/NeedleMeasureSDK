@@ -1,4 +1,4 @@
-name: Build and Release SDK
+name: Build and Release
 
 on:
   push:
@@ -10,195 +10,152 @@ on:
   workflow_dispatch:
 
 jobs:
-  # 构建 SDK
+  # 构建和测试
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Set up JDK 8
       uses: actions/setup-java@v4
       with:
         java-version: '8'
         distribution: 'temurin'
         cache: gradle
-    
-    - name: Grant execute permission for gradlew
+
+    - name: Grant execute permission
       run: chmod +x gradlew
-    
-    - name: Build SDK
-      run: ./gradlew clean build -x test
-    
-    - name: Create distribution packages
+
+    - name: Build and Test
+      run: ./gradlew build test
+
+    - name: Build All Platforms
+      run: ./gradlew buildAllPlatforms
+
+    - name: Create Distribution Packages
+      run: ./gradlew distAll
+
+    - name: List Build Artifacts
       run: |
-        ./gradlew dist distMinimal distDesktop distAndroid
-        
-        echo "=== Build Artifacts ==="
-        ls -la build/libs/
+        echo "=== JAR Files ==="
+        ls -lh build/libs/*.jar
         echo ""
         echo "=== Distribution Files ==="
-        ls -la build/dist/
-    
-    - name: Upload build artifacts
+        ls -lh build/dist/
+
+    - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: sdk-build-artifacts
+        name: sdk-artifacts
         path: |
           build/libs/*.jar
           build/dist/*.zip
         retention-days: 30
 
-  # Android SDK 构建测试（使用 JavaCV）
-  test-android-sdk:
+  # Android 构建验证
+  verify-android:
     needs: build
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
-    
+
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
-      with:
-        cmdline-tools-version: '11076708'
-        packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
-    
+
     - name: Download SDK artifacts
       uses: actions/download-artifact@v4
       with:
-        name: sdk-build-artifacts
-        path: downloaded/
-    
-    - name: Setup Android Example Project
-      run: |
-        echo "=== Setting up Android Example Project ==="
-        
-        # 找到 Android SDK JAR
-        ANDROID_JAR=$(find downloaded -name "*android.jar" -not -name "*sources*" -not -name "*javadoc*" | head -1)
-        echo "Android SDK JAR: $ANDROID_JAR"
-        
-        if [ -z "$ANDROID_JAR" ]; then
-            echo "ERROR: Android SDK JAR not found!"
-            find downloaded -type f -name "*.jar"
-            exit 1
-        fi
-        
-        mkdir -p android-example/app/libs
-        cp "$ANDROID_JAR" android-example/app/libs/
-        
-        # 复制模板到 assets
-        mkdir -p android-example/app/src/main/assets/templates
-        cp template/needle_template_50mm.png android-example/app/src/main/assets/templates/
-        cp template/needle_template_50mm.meta android-example/app/src/main/assets/templates/
-        
-        echo "Setup complete!"
-    
-    - name: Build Android Project
-      run: |
-        echo "=== Building Android Project with JavaCV ==="
-        cd android-example
-        
-        # 创建 local.properties
-        echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-        
-        # 授予 gradlew 执行权限
-        chmod +x ./gradlew
-        
-        # 构建 Debug APK（JavaCV 从 Maven Central 自动下载）
-        ./gradlew assembleDebug --stacktrace
-        
-        echo "=== Build Output ==="
-        find app/build/outputs -name "*.apk" | head -10
-        ls -lh app/build/outputs/apk/debug/*.apk || echo "APK not found"
-    
-    - name: Verify Android SDK
-      run: |
-        echo "=== Verifying Android SDK JAR ==="
-        ANDROID_JAR=$(find downloaded -name "*android.jar" -not -name "*sources*" -not -name "*javadoc*" | head -1)
-        
-        echo "Checking key classes:"
-        jar tf "$ANDROID_JAR" | grep -E "(NeedleLengthAnalyzer|MeasurementResult)" | head -5
+        name: sdk-artifacts
+        path: artifacts/
 
-  # 创建 Release
+    - name: Setup Android Example
+      run: |
+        # 复制 Android SDK JAR
+        mkdir -p android-example/app/libs
+        cp artifacts/build/libs/*-android.jar android-example/app/libs/
+
+        # 复制模板文件
+        mkdir -p android-example/app/src/main/assets/templates
+        cp template/needle_template_50mm.* android-example/app/src/main/assets/templates/
+
+    - name: Build Android Example
+      run: |
+        cd android-example
+        echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+        chmod +x ./gradlew
+        ./gradlew assembleDebug --stacktrace
+
+    - name: Verify APK
+      run: |
+        echo "=== APK Output ==="
+        find android-example/app/build/outputs -name "*.apk" -exec ls -lh {} \;
+
+  # 发布 Release
   release:
-    needs: [build, test-android-sdk]
+    needs: [build, verify-android]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Download all artifacts
+    - name: Download artifacts
       uses: actions/download-artifact@v4
       with:
-        name: sdk-build-artifacts
+        name: sdk-artifacts
         path: artifacts/
-    
+
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         name: Release ${{ github.ref_name }}
         body: |
           ## Needle Measure SDK ${{ github.ref_name }}
-          
-          ### 📦 SDK 下载
-          
-          #### 桌面平台 (Windows/Linux/Mac)
-          
-          **开箱即用版**
-          - `needle-measure-sdk-${{ github.ref_name }}-desktop-complete.zip`
-          
-          包含：
-          - `needle-measure-sdk-${{ github.ref_name }}-desktop-all.jar` - Fat-jar（含 JavaCV 所有平台）
-          - `needle-measure-sdk-${{ github.ref_name }}-desktop.jar` - 标准版（配合 JavaCV 使用）
-          
-          **使用方法：**
+
+          ### 下载
+
+          | 文件 | 说明 | 推荐场景 |
+          |------|------|----------|
+          | `*-windows-x86_64.zip` | Windows x64 | Windows 桌面应用 |
+          | `*-linux-x86_64.zip` | Linux x64 | Linux 服务器/桌面 |
+          | `*-macosx.zip` | macOS (Intel + Apple Silicon) | Mac 应用 |
+          | `*-android.zip` | Android SDK | Android 应用 |
+          | `*-all-platforms.zip` | 全平台 | 需要支持所有平台 |
+
+          ### 瘦身说明
+
+          - **平台特定版本** (~15MB): 只包含目标平台的原生库
+          - **全平台版本** (~180MB): 包含所有平台的原生库
+
+          ### 使用方法
+
           ```bash
-          # Fat-jar 直接运行
-          java -cp needle-measure-sdk-*-desktop-all.jar com.edge.vision.example.DesktopExample
-          
-          # 或者配合 JavaCV 使用
-          java -cp "needle-measure-sdk-*-desktop.jar:javacv-platform-1.5.9.jar" YourApp
+          # 直接运行（已包含依赖）
+          java -jar needle-measure-sdk-*-windows-x86_64.jar
+
+          # 或作为依赖使用
+          # Maven/Gradle 添加 javacv 依赖即可
           ```
-          
-          #### Android 平台
-          
-          **JavaCV 版本**
-          - `needle-measure-sdk-${{ github.ref_name }}-android-complete.zip`
-          
-          包含：
-          - SDK JAR（已验证可构建）
-          - 完整示例项目（使用 JavaCV）
-          - 模板文件
-          
-          **Gradle 依赖：**
-          ```gradle
-          dependencies {
-              implementation files('libs/needle-measure-sdk-1.0.0-android.jar')
-              
-              // JavaCV for Android
-              implementation 'org.bytedeco:javacv:1.5.9'
-              implementation 'org.bytedeco:opencv:4.7.0-1.5.9:android-arm64'
-          }
+
+          ### Android 集成
+
+          ```groovy
+          implementation files('libs/needle-measure-sdk-*-android.jar')
+          implementation 'org.bytedeco:opencv:4.7.0-1.5.9:android-arm64'
           ```
-          
-          ### ✅ 测试验证
-          - ✅ 桌面端 SDK：本地测试（JavaCV）
-          - ✅ Android SDK：GitHub Actions 自动构建（JavaCV）
-          
+
         files: |
           artifacts/build/libs/*.jar
           artifacts/build/dist/*.zip
