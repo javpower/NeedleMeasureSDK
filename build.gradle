@@ -1,0 +1,369 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'com.github.johnrengelman.shadow' version '7.1.2'
+}
+
+group = 'com.edge.vision'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+    
+    withSourcesJar()
+    withJavadocJar()
+}
+
+repositories {
+    mavenCentral()
+    google()
+    maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
+}
+
+dependencies {
+    // OpenCV - 桌面平台使用（打包到 fat-jar）
+    implementation 'org.openpnp:opencv:4.7.0-0'
+    
+    // nu.pattern OpenCV加载器（打包到 fat-jar，包含原生库）
+    implementation 'nu.pattern:opencv:2.4.9-4'
+    
+    // 注意：Android的OpenCV SDK由使用方项目提供，这里不需要声明
+    
+    // 测试依赖
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.2'
+    testImplementation 'org.openpnp:opencv:4.7.0-0'
+}
+
+// 源代码集配置
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src/main/java']
+        }
+        resources {
+            srcDirs = ['src/main/resources']
+        }
+    }
+    
+    test {
+        java {
+            srcDirs = ['src/test/java']
+        }
+    }
+}
+
+// 任务：创建桌面平台jar
+task desktopJar(type: Jar) {
+    archiveClassifier = 'desktop'
+    from sourceSets.main.output
+    
+    manifest {
+        attributes(
+            'Implementation-Title': 'Needle Measure SDK - Desktop',
+            'Implementation-Version': version,
+            'Implementation-Vendor': 'Edge Vision'
+        )
+    }
+}
+
+// 任务：创建Android平台jar（内容与桌面版相同，仅classifier不同）
+// 注意：Android项目需要自行实现AndroidOpenCVLoader，参考android-example/
+task androidJar(type: Jar) {
+    archiveClassifier = 'android'
+    from sourceSets.main.output
+    
+    manifest {
+        attributes(
+            'Implementation-Title': 'Needle Measure SDK - Android',
+            'Implementation-Version': version,
+            'Implementation-Vendor': 'Edge Vision'
+        )
+    }
+}
+
+// 任务：创建桌面平台的 fat-jar（包含 OpenCV Java 库）
+shadowJar {
+    archiveClassifier = 'desktop-all'
+    from sourceSets.main.output
+    
+    // 包含 runtime 依赖（包括 OpenCV）
+    configurations = [project.configurations.runtimeClasspath]
+    
+    manifest {
+        attributes(
+            'Implementation-Title': 'Needle Measure SDK - Desktop (All-in-One)',
+            'Implementation-Version': version,
+            'Implementation-Vendor': 'Edge Vision'
+        )
+    }
+    
+    // 解决包冲突
+    mergeServiceFiles()
+    exclude 'META-INF/*.DSA'
+    exclude 'META-INF/*.RSA'
+    exclude 'META-INF/*.SF'
+}
+
+// 创建一个更友好的任务名
+task desktopFatJar {
+    dependsOn shadowJar
+    group = 'build'
+    description = 'Create fat-jar with all dependencies for desktop'
+}
+
+// 任务：创建 Android AAR 打包脚本（使用 shell 脚本调用 Android SDK）
+task createAndroidAAR(type: Exec) {
+    group = 'build'
+    description = 'Create Android AAR package with OpenCV'
+    
+    commandLine 'sh', '-c', '''
+        echo "Creating Android AAR package..."
+        mkdir -p build/android-aar
+        
+        # 创建 AAR 目录结构
+        mkdir -p build/android-aar/classes
+        mkdir -p build/android-aar/jni/armeabi-v7a
+        mkdir -p build/android-aar/jni/arm64-v8a
+        mkdir -p build/android-aar/jni/x86
+        mkdir -p build/android-aar/jni/x86_64
+        mkdir -p build/android-aar/assets
+        
+        # 编译 SDK 类文件
+        javac -d build/android-aar/classes \
+            -sourcepath src/main/java \
+            $(find src/main/java -name "*.java") || true
+        
+        # 打包成 JAR
+        jar cvf build/android-aar/classes.jar -C build/android-aar/classes . || true
+        
+        # 创建 AndroidManifest.xml
+        cat > build/android-aar/AndroidManifest.xml << \'EOF\'
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.edge.vision"
+    android:versionCode="1"
+    android:versionName="1.0.0">
+</manifest>
+EOF
+        
+        # 创建 aar
+        cd build/android-aar
+        zip -r needle-measure-sdk-${VERSION:-1.0.0}.aar \
+            classes.jar \
+            jni/ \
+            assets/ \
+            AndroidManifest.xml || true
+        cd ../..
+        
+        cp build/android-aar/needle-measure-sdk-*.aar build/libs/ 2>/dev/null || true
+        echo "Android AAR package created (stub version)"
+    '''
+}
+
+// 构建时创建所有jar
+artifacts {
+    archives desktopJar
+    archives androidJar
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed"
+    }
+}
+
+// 发布配置
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+            
+            artifact desktopJar
+            artifact androidJar
+            
+            pom {
+                name = 'Needle Measure SDK'
+                description = 'Cross-platform needle length measurement SDK using OpenCV'
+                url = 'https://github.com/edgevision/needle-measure-sdk'
+                
+                licenses {
+                    license {
+                        name = 'The Apache License, Version 2.0'
+                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                    }
+                }
+                
+                developers {
+                    developer {
+                        id = 'edgevision'
+                        name = 'Edge Vision Team'
+                        email = 'dev@edgevision.com'
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 任务：复制依赖到lib目录（方便部署）
+task copyDependencies(type: Copy) {
+    from configurations.runtimeClasspath
+    into 'build/libs/lib'
+}
+
+// 任务：复制 OpenCV 原生库到分发目录
+task copyNativeLibs(type: Copy) {
+    group = 'distribution'
+    description = 'Copy OpenCV native libraries for distribution'
+    
+    // 桌面平台原生库（从依赖中解压）
+    doFirst {
+        copy {
+            from zipTree(configurations.compileClasspath.files.find { it.name.contains('opencv') }.absolutePath)
+            into 'build/natives/desktop'
+            include 'nu/pattern/opencv/**/*.so'
+            include 'nu/pattern/opencv/**/*.dll'
+            include 'nu/pattern/opencv/**/*.dylib'
+        }
+    }
+}
+
+// 任务：创建桌面平台完整分发包（开箱即用）
+task distDesktop(type: Zip) {
+    dependsOn desktopJar, desktopFatJar, sourcesJar, javadocJar
+    
+    archiveFileName = "needle-measure-sdk-${version}-desktop-complete.zip"
+    destinationDirectory = file('build/dist')
+    
+    // SDK JARs
+    from('build/libs') {
+        include 'needle-measure-sdk-*.jar'
+        include 'needle-measure-sdk-*-desktop*.jar'
+    }
+    
+    // 使用说明
+    from('docs') {
+        into 'docs'
+        include '**/*'
+    }
+    
+    from('.') {
+        include 'README.md'
+        include 'LICENSE'
+        include 'RELEASE.md'
+    }
+    
+    // 示例代码
+    from('example-project') {
+        into 'example'
+        include '**/*'
+    }
+    
+    // 模板文件
+    from('template') {
+        into 'template'
+        include '**/*'
+    }
+}
+
+// 任务：创建 Android 平台分发包（AAR + JAR）
+task distAndroid(type: Zip) {
+    dependsOn androidJar, sourcesJar, javadocJar
+    
+    archiveFileName = "needle-measure-sdk-${version}-android-complete.zip"
+    destinationDirectory = file('build/dist')
+    
+    // Android SDK JARs
+    from('build/libs') {
+        include 'needle-measure-sdk-*-android.jar'
+        include 'needle-measure-sdk-*-sources.jar'
+        include 'needle-measure-sdk-*-javadoc.jar'
+    }
+    
+    // AAR 文件（如果存在）
+    from('build/libs') {
+        into 'aar'
+        include '*.aar'
+    }
+    
+    // 使用说明
+    from('docs') {
+        into 'docs'
+        include '**/*'
+    }
+    
+    from('.') {
+        include 'README.md'
+        include 'LICENSE'
+        include 'RELEASE.md'
+    }
+    
+    // Android 示例项目
+    from('android-example') {
+        into 'android-example'
+        include '**/*'
+    }
+    
+    // 模板文件
+    from('template') {
+        into 'template'
+        include '**/*'
+    }
+}
+
+// 任务：创建分发包（所有平台）
+task dist(type: Zip) {
+    dependsOn desktopJar, desktopFatJar, androidJar, sourcesJar, javadocJar
+    
+    archiveFileName = "needle-measure-sdk-${version}.zip"
+    destinationDirectory = file('build/dist')
+    
+    from('build/libs') {
+        include '*.jar'
+    }
+    
+    from('docs') {
+        into 'docs'
+        include '**/*'
+    }
+    
+    from('.') {
+        include 'README.md'
+        include 'LICENSE'
+        include 'RELEASE.md'
+    }
+    
+    from('example-project') {
+        into 'example-project'
+        include '**/*'
+    }
+    
+    from('template') {
+        into 'template'
+        include '**/*'
+    }
+}
+
+// 任务：创建精简分发包
+task distMinimal(type: Zip) {
+    dependsOn desktopJar, desktopFatJar, androidJar, sourcesJar, javadocJar
+    
+    archiveFileName = "needle-measure-sdk-${version}-minimal.zip"
+    destinationDirectory = file('build/dist')
+    
+    from('build/libs') {
+        include '*.jar'
+    }
+    
+    from('docs') {
+        into 'docs'
+        include '**/*'
+    }
+    
+    from('.') {
+        include 'README.md'
+        include 'LICENSE'
+    }
+}

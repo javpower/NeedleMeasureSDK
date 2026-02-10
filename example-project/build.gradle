@@ -1,0 +1,48 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // ===== 方式1: 引用本地 jar 文件（推荐本地开发时使用）=====
+    implementation files('libs/needle-measure-sdk-1.0.0-desktop.jar')
+    
+    // ===== 方式2: 如果 jar 在其他位置，使用完整路径 =====
+    // implementation files('/absolute/path/to/needle-measure-sdk-1.0.0-desktop.jar')
+    
+    // OpenCV 依赖（SDK 本身不包含 OpenCV，使用方需要提供）
+    implementation 'org.openpnp:opencv:4.7.0-0'
+    
+    // 或使用 nu.pattern（会自动处理原生库）
+    // implementation 'nu.pattern:opencv:2.4.9-4'
+}
+
+// 打包成可执行 jar（包含所有依赖）
+task fatJar(type: Jar) {
+    archiveClassifier = 'all'
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    with jar
+    manifest {
+        attributes 'Main-Class': 'com.example.ExampleApp'
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// 运行任务
+task run(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.example.ExampleApp'
+}

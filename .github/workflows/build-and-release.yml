@@ -1,0 +1,543 @@
+name: Build and Release SDK
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (例如: 1.0.1)'
+        required: false
+        default: ''
+
+jobs:
+  # 构建 SDK
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 8
+      uses: actions/setup-java@v4
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+        cache: gradle
+    
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+    
+    - name: Build SDK
+      run: ./gradlew clean build -x test
+    
+    - name: Create fat-jar (Desktop)
+      run: ./gradlew desktopFatJar
+    
+    - name: Create distribution packages
+      run: |
+        ./gradlew dist distMinimal distDesktop distAndroid
+        
+        # 列出所有产物
+        echo "=== All Build Artifacts ==="
+        ls -la build/libs/
+        echo ""
+        echo "=== Distribution Files ==="
+        ls -la build/dist/
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: sdk-build-artifacts
+        path: |
+          build/libs/*.jar
+          build/dist/*.zip
+        retention-days: 30
+
+  # 测试桌面端 SDK
+  test-desktop-sdk:
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download SDK artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: sdk-build-artifacts
+        path: build/
+    
+    - name: Set up JDK 8
+      uses: actions/setup-java@v4
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+    
+    - name: Test Desktop SDK with template and images
+      run: |
+        echo "=== Testing Desktop SDK with real template and images ==="
+        
+        # 找到 fat-jar
+        SDK_JAR=$(find build/build/libs -name "*desktop-all.jar" | head -1)
+        echo "SDK JAR: $SDK_JAR"
+        
+        # 列出模板和测试图片
+        echo "=== Template Files ==="
+        ls -la template/
+        
+        echo "=== Test Images ==="
+        ls -la testimges/
+        
+        # 创建测试 Java 程序
+        cat > TestSDK.java << 'TESTEOF'
+        import com.edge.vision.core.NeedleLengthAnalyzer;
+        import com.edge.vision.core.MeasurementResult;
+        import org.opencv.core.Mat;
+        import org.opencv.imgcodecs.Imgcodecs;
+        import nu.pattern.OpenCV;
+        
+        public class TestSDK {
+            static {
+                OpenCV.loadLocally();
+            }
+            
+            public static void main(String[] args) {
+                try {
+                    System.out.println("=== Desktop SDK Test Started ===");
+                    
+                    if (args.length < 2) {
+                        System.err.println("Usage: java TestSDK <template.png> <test_image.jpg>");
+                        System.exit(1);
+                    }
+                    
+                    String templatePath = args[0];
+                    String imagePath = args[1];
+                    
+                    System.out.println("Template: " + templatePath);
+                    System.out.println("Test Image: " + imagePath);
+                    
+                    // 测试 1: 加载模板
+                    System.out.println("\n[TEST 1] Loading template...");
+                    NeedleLengthAnalyzer analyzer = new NeedleLengthAnalyzer(templatePath);
+                    System.out.println("✓ Template loaded successfully");
+                    System.out.println("  Template ID: " + analyzer.getTemplate().getTemplateId());
+                    System.out.println("  Reference Length: " + analyzer.getTemplate().getReferenceLengthMm() + " mm");
+                    
+                    // 测试 2: 测量图像
+                    System.out.println("\n[TEST 2] Analyzing image...");
+                    Mat image = Imgcodecs.imread(imagePath);
+                    if (image.empty()) {
+                        System.err.println("✗ Failed to load image: " + imagePath);
+                        System.exit(1);
+                    }
+                    System.out.println("✓ Image loaded: " + image.cols() + "x" + image.rows());
+                    
+                    MeasurementResult result = analyzer.analyze(image);
+                    System.out.println("✓ Analysis completed");
+                    
+                    // 测试 3: 输出结果
+                    System.out.println("\n[TEST 3] Results:");
+                    System.out.println("  Length: " + result.getLengthMm() + " mm");
+                    System.out.println("  Confidence: " + (result.getConfidence() * 100) + "%");
+                    System.out.println("  Processing Time: " + result.getProcessingTimeMs() + " ms");
+                    
+                    // 测试 4: JSON 输出
+                    System.out.println("\n[TEST 4] JSON Output:");
+                    System.out.println(result.toJsonString());
+                    
+                    // 测试 5: 可视化
+                    System.out.println("\n[TEST 5] Generating visualization...");
+                    Mat visualization = analyzer.generateVisualization(image, result);
+                    String outputPath = "/tmp/test_result.png";
+                    Imgcodecs.imwrite(outputPath, visualization);
+                    System.out.println("✓ Visualization saved: " + outputPath);
+                    
+                    // 清理
+                    image.release();
+                    visualization.release();
+                    analyzer.close();
+                    
+                    // 验证结果合理性
+                    double length = result.getLengthMm();
+                    double confidence = result.getConfidence();
+                    
+                    if (length < 40 || length > 60) {
+                        System.err.println("✗ Length out of expected range (40-60mm): " + length);
+                        System.exit(1);
+                    }
+                    
+                    if (confidence < 0.5) {
+                        System.err.println("✗ Confidence too low: " + confidence);
+                        System.exit(1);
+                    }
+                    
+                    System.out.println("\n=== All Desktop SDK Tests Passed ===");
+                    System.exit(0);
+                    
+                } catch (Exception e) {
+                    System.err.println("✗ Test failed: " + e.getMessage());
+                    e.printStackTrace();
+                    System.exit(1);
+                }
+            }
+        }
+        TESTEOF
+        
+        # 编译测试程序
+        echo "=== Compiling Test Program ==="
+        javac -cp "$SDK_JAR" TestSDK.java
+        
+        # 运行测试（使用所有测试图片）
+        echo "=== Running Tests ==="
+        TEST_FAILED=0
+        
+        for img in testimges/*.jpeg; do
+            echo ""
+            echo "Testing with: $img"
+            if java -cp ".:$SDK_JAR" TestSDK template/needle_template_50mm.png "$img"; then
+                echo "✓ PASSED: $img"
+            else
+                echo "✗ FAILED: $img"
+                TEST_FAILED=1
+            fi
+            echo "---"
+        done
+        
+        if [ $TEST_FAILED -eq 1 ]; then
+            echo "Some tests failed!"
+            exit 1
+        fi
+        
+        echo "=== Desktop SDK Test Completed Successfully ==="
+    
+    - name: Verify Desktop SDK package contents
+      run: |
+        echo "=== Verifying Desktop SDK Package ==="
+        unzip -l build/build/dist/needle-measure-sdk-*-desktop-complete.zip | head -40
+
+  # 构建和测试 Android SDK
+  test-android-sdk:
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+      with:
+        cmdline-tools-version: '11076708'
+        packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+    
+    - name: Download OpenCV Android SDK
+      run: |
+        echo "=== Downloading OpenCV Android SDK ==="
+        mkdir -p /tmp/opencv
+        cd /tmp/opencv
+        
+        # 下载 OpenCV Android SDK (4.8.1)
+        wget -q https://github.com/opencv/opencv/releases/download/4.8.1/opencv-4.8.1-android-sdk.zip
+        unzip -q opencv-4.8.1-android-sdk.zip
+        
+        echo "OpenCV Android SDK downloaded:"
+        ls -la OpenCV-android-sdk/sdk/
+    
+    - name: Download SDK artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: sdk-build-artifacts
+        path: build/
+    
+    - name: Setup Android Example Project
+      run: |
+        echo "=== Setting up Android Example Project ==="
+        
+        # 复制 Android SDK JAR 到示例项目
+        ANDROID_JAR=$(find build/build/libs -name "*android.jar" | head -1)
+        echo "Android SDK JAR: $ANDROID_JAR"
+        
+        mkdir -p android-example/app/libs
+        cp "$ANDROID_JAR" android-example/app/libs/
+        
+        # 复制 OpenCV Android SDK
+        cp -r /tmp/opencv/OpenCV-android-sdk android-example/app/libs/
+        
+        echo "Android example project structure:"
+        find android-example/app/libs -type f | head -20
+        
+        # 复制模板到 assets
+        mkdir -p android-example/app/src/main/assets/templates
+        cp template/needle_template_50mm.png android-example/app/src/main/assets/templates/
+        cp template/needle_template_50mm.meta android-example/app/src/main/assets/templates/
+        
+        echo "Assets:"
+        find android-example/app/src/main/assets -type f
+    
+    - name: Build Android Project
+      run: |
+        echo "=== Building Android Project ==="
+        cd android-example
+        
+        # 创建 local.properties
+        echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+        
+        # 授予 gradlew 执行权限
+        chmod +x ./gradlew || true
+        
+        # 构建 Debug APK
+        ./gradlew assembleDebug --stacktrace
+        
+        echo "=== Build Output ==="
+        find app/build/outputs -name "*.apk" -o -name "*.aar" 2>/dev/null | head -10
+    
+    - name: Verify Android SDK JAR Contents
+      run: |
+        echo "=== Verifying Android SDK JAR ==="
+        ANDROID_JAR=$(find build/build/libs -name "*android.jar" | head -1)
+        
+        echo "JAR contents:"
+        jar tf "$ANDROID_JAR" | head -30
+        
+        # 检查关键类
+        echo ""
+        echo "=== Checking Key Classes ==="
+        KEY_CLASSES=(
+            "com/edge/vision/core/NeedleLengthAnalyzer.class"
+            "com/edge/vision/core/MeasurementResult.class"
+            "com/edge/vision/core/AnalysisTemplate.class"
+            "com/edge/vision/platform/OpenCVInitializer.class"
+        )
+        
+        ALL_FOUND=true
+        for class in "${KEY_CLASSES[@]}"; do
+            if jar tf "$ANDROID_JAR" | grep -q "^$class$"; then
+                echo "✓ $class"
+            else
+                echo "✗ $class NOT FOUND"
+                ALL_FOUND=false
+            fi
+        done
+        
+        if [ "$ALL_FOUND" = false ]; then
+            exit 1
+        fi
+    
+    - name: Verify Android SDK Package
+      run: |
+        echo "=== Verifying Android SDK Package ==="
+        unzip -l build/build/dist/needle-measure-sdk-*-android-complete.zip | head -40
+        
+        # 检查包内是否包含模板
+        if unzip -l build/build/dist/needle-measure-sdk-*-android-complete.zip | grep -q "template"; then
+            echo "✓ Templates included in package"
+        else
+            echo "✗ Templates NOT included in package"
+            exit 1
+        fi
+        
+        echo ""
+        echo "=== Android SDK Package Valid ==="
+    
+    - name: Upload Android Build Artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: android-build-artifacts
+        path: |
+          android-example/app/build/outputs/
+          android-example/app/build/intermediates/aar_main_jar/
+        retention-days: 7
+
+  # 多平台构建和测试
+  build-multi-platform:
+    needs: build
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 8
+      uses: actions/setup-java@v4
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+        cache: gradle
+    
+    - name: Grant execute permission for gradlew (Unix)
+      if: runner.os != 'Windows'
+      run: chmod +x gradlew
+    
+    - name: Build SDK on ${{ matrix.os }}
+      run: ./gradlew clean build desktopFatJar -x test
+    
+    - name: Test SDK on ${{ matrix.os }}
+      shell: bash
+      run: |
+        echo "Verifying SDK build on ${{ matrix.os }}"
+        
+        # 找到 fat-jar
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          SDK_JAR=$(find build/libs -name "*desktop-all.jar" 2>/dev/null | head -1)
+        else
+          SDK_JAR=$(find build/libs -name "*desktop-all.jar" | head -1)
+        fi
+        
+        if [ -n "$SDK_JAR" ] && [ -f "$SDK_JAR" ]; then
+            echo "✓ Desktop fat-jar found: $SDK_JAR"
+            ls -lh "$SDK_JAR"
+        else
+            echo "✗ Desktop fat-jar NOT found"
+            ls -la build/libs/
+            exit 1
+        fi
+
+  # 创建 Release
+  release:
+    needs: [build, test-desktop-sdk, test-android-sdk, build-multi-platform]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: sdk-build-artifacts
+        path: artifacts/
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: Release ${{ github.ref_name }}
+        body: |
+          ## Needle Measure SDK ${{ github.ref_name }}
+          
+          ### 📦 开箱即用 SDK 下载
+          
+          #### 桌面平台 (Windows/Linux/Mac)
+          
+          **推荐：完整版（开箱即用，含 OpenCV）**
+          - `needle-measure-sdk-${{ github.ref_name }}-desktop-complete.zip`
+          
+          包含：
+          - `needle-measure-sdk-${{ github.ref_name }}-desktop-all.jar` - Fat-jar（含 OpenCV 依赖，139MB）
+          - `needle-measure-sdk-${{ github.ref_name }}-desktop.jar` - 标准版（需自行添加 OpenCV）
+          - 源码包、文档包
+          - 示例代码、模板文件
+          
+          **使用方法：**
+          ```bash
+          # 直接运行（无需配置 OpenCV）
+          java -cp needle-measure-sdk-*-desktop-all.jar com.edge.vision.example.DesktopExample
+          ```
+          
+          #### Android 平台
+          
+          **完整版（JAR + 示例项目）**
+          - `needle-measure-sdk-${{ github.ref_name }}-android-complete.zip`
+          
+          包含：
+          - `needle-measure-sdk-${{ github.ref_name }}-android.jar` - Android SDK JAR
+          - Android 示例项目（含完整 build.gradle 配置）
+          - 模板文件
+          
+          **使用方法：**
+          1. 下载并解压 `android-complete.zip`
+          2. 用 Android Studio 打开 `android-example` 目录
+          3. 同步 Gradle，构建 APK
+          4. 在模拟器或真机运行
+          
+          **Gradle 依赖：**
+          ```gradle
+          dependencies {
+              implementation files('libs/needle-measure-sdk-${{ github.ref_name }}-android.jar')
+              // OpenCV Android SDK 需自行导入
+          }
+          ```
+          
+          #### 所有平台通用
+          
+          - `needle-measure-sdk-${{ github.ref_name }}.zip` - 完整分发包
+          - `needle-measure-sdk-${{ github.ref_name }}-minimal.zip` - 精简版
+          
+          #### 开发依赖
+          
+          - `needle-measure-sdk-${{ github.ref_name }}-sources.jar` - 源码包
+          - `needle-measure-sdk-${{ github.ref_name }}-javadoc.jar` - 文档包
+          
+          ### ✅ 测试验证
+          
+          此版本 SDK 已通过以下测试：
+          - ✅ 桌面端 SDK 使用真实模板文件测试
+          - ✅ 桌面端 SDK 使用 5+ 张测试图像验证
+          - ✅ Android SDK 完整构建（OpenCV Android SDK + 示例项目）
+          - ✅ 多平台构建（Ubuntu/Windows/macOS）
+          
+          ### 📖 快速开始
+          
+          **桌面平台（开箱即用）：**
+          ```java
+          // 直接使用 fat-jar，无需配置 OpenCV
+          import com.edge.vision.core.NeedleLengthAnalyzer;
+          
+          NeedleLengthAnalyzer analyzer = new NeedleLengthAnalyzer("template.png");
+          MeasurementResult result = analyzer.analyze("image.jpg");
+          System.out.println("长度: " + result.getLengthMm() + " mm");
+          ```
+          
+          **Android 平台：**
+          ```java
+          // 在 Activity 中使用
+          InputStream imageStream = getAssets().open("templates/needle.png");
+          InputStream metaStream = getAssets().open("templates/needle.meta");
+          NeedleLengthAnalyzer analyzer = new NeedleLengthAnalyzer(imageStream, metaStream);
+          
+          // Bitmap -> Mat -> 测量
+          Mat mat = new Mat();
+          Utils.bitmapToMat(bitmap, mat);
+          MeasurementResult result = analyzer.analyze(mat);
+          ```
+          
+          ### 📚 文档
+          
+          - 使用指南：`docs/USAGE.md`
+          - 发布说明：`RELEASE.md`
+          
+        files: |
+          artifacts/build/libs/needle-measure-sdk-*-desktop-all.jar
+          artifacts/build/libs/needle-measure-sdk-*-desktop.jar
+          artifacts/build/libs/needle-measure-sdk-*-android.jar
+          artifacts/build/libs/needle-measure-sdk-*-sources.jar
+          artifacts/build/libs/needle-measure-sdk-*-javadoc.jar
+          artifacts/build/dist/needle-measure-sdk-*-desktop-complete.zip
+          artifacts/build/dist/needle-measure-sdk-*-android-complete.zip
+          artifacts/build/dist/needle-measure-sdk-*-minimal.zip
+          artifacts/build/dist/needle-measure-sdk-*.zip
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
