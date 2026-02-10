@@ -31,7 +31,7 @@ android {
     
     sourceSets {
         main {
-            jniLibs.srcDirs = ['libs/OpenCV-android-sdk/sdk/native/libs']
+            jniLibs.srcDirs = ['libs/OpenCV-android-sdk/sdk/native/libs', 'libs/OpenCV-android-sdk/native/libs']
         }
     }
 }
@@ -40,8 +40,8 @@ dependencies {
     // Needle Measure SDK
     implementation files('libs/needle-measure-sdk-1.0.0-android.jar')
     
-    // OpenCV Android SDK
-    implementation fileTree(dir: 'libs/OpenCV-android-sdk/sdk/java/libs', include: ['*.jar'])
+    // OpenCV Android SDK - try multiple possible paths
+    implementation fileTree(dir: 'libs/OpenCV-android-sdk', include: ['**/*.jar'])
     
     // AndroidX
     implementation 'androidx.appcompat:appcompat:1.6.1'
