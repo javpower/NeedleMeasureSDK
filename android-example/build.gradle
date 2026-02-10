@@ -1,6 +1,17 @@
 // Top-level build file
-plugins {
-    id 'com.android.application' version '8.2.0' apply false
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.2.0'
+    }
 }
 
-// 注意：仓库配置在 settings.gradle 中统一管理
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}

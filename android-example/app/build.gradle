@@ -12,6 +12,12 @@ android {
         targetSdk 34
         versionCode 1
         versionName "1.0"
+
+        ndk {
+            // 按需选择架构，减少包体积
+            abiFilters 'arm64-v8a'
+            // abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+        }
     }
 
     buildTypes {
@@ -20,24 +26,25 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
     }
 }
 
 dependencies {
     // Needle Measure SDK
     implementation files('libs/needle-measure-sdk-1.0.0-android.jar')
-    
-    // JavaCV for Android (指定架构)
+
+    // JavaCV for Android (按需选择架构)
     implementation 'org.bytedeco:javacv:1.5.9'
-    implementation 'org.bytedeco:opencv:4.7.0-1.5.9:android-arm'
     implementation 'org.bytedeco:opencv:4.7.0-1.5.9:android-arm64'
-    implementation 'org.bytedeco:opencv:4.7.0-1.5.9:android-x86'
-    implementation 'org.bytedeco:opencv:4.7.0-1.5.9:android-x86_64'
-    
+    // implementation 'org.bytedeco:opencv:4.7.0-1.5.9:android-arm'
+    // implementation 'org.bytedeco:opencv:4.7.0-1.5.9:android-x86'
+    // implementation 'org.bytedeco:opencv:4.7.0-1.5.9:android-x86_64'
+
     // AndroidX
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.9.0'
+    implementation 'com.google.android.material:material:1.11.0'
 }

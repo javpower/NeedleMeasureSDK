@@ -2,6 +2,12 @@
 
 这个示例展示了如何在 Android 项目中使用 Needle Measure SDK（基于 JavaCV）。
 
+## 环境要求
+
+- **JDK 11+**
+- **Android SDK 34**
+- **Gradle 8.2+**（已包含 wrapper）
+
 ## 特点
 
 - 使用 **JavaCV**，无需下载 OpenCV Android SDK

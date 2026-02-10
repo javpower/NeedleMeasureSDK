@@ -181,7 +181,20 @@ needle-measure-sdk/
 |------|------|
 | JavaCV | 1.5.9 |
 | OpenCV | 4.7.0 |
-| Java | 8+ |
+| Java | 11+ |
+
+## 环境要求
+
+- **JDK 11+**（推荐 JDK 11 或 JDK 17）
+- **Gradle 7.5+**（已包含 wrapper）
+
+```bash
+# 检查 Java 版本
+java -version  # 需要 11 或更高
+
+# 如果有多个 Java 版本，设置 JAVA_HOME
+export JAVA_HOME=/path/to/java11/or/java17
+```
 
 ## 许可证
 
