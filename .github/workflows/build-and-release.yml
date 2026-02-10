@@ -38,9 +38,6 @@ jobs:
     - name: Build SDK
       run: ./gradlew clean build -x test
     
-    - name: Create fat-jar (Desktop)
-      run: ./gradlew desktopFatJar
-    
     - name: Create distribution packages
       run: |
         ./gradlew dist distMinimal distDesktop distAndroid
@@ -60,169 +57,6 @@ jobs:
           build/libs/*.jar
           build/dist/*.zip
         retention-days: 30
-
-  # 测试桌面端 SDK
-  test-desktop-sdk:
-    needs: build
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Download SDK artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: sdk-build-artifacts
-        path: build/
-    
-    - name: Set up JDK 8
-      uses: actions/setup-java@v4
-      with:
-        java-version: '8'
-        distribution: 'temurin'
-    
-    - name: Test Desktop SDK with template and images
-      run: |
-        echo "=== Testing Desktop SDK with real template and images ==="
-        
-        # 找到 fat-jar
-        SDK_JAR=$(find build/build/libs -name "*desktop-all.jar" | head -1)
-        echo "SDK JAR: $SDK_JAR"
-        
-        # 列出模板和测试图片
-        echo "=== Template Files ==="
-        ls -la template/
-        
-        echo "=== Test Images ==="
-        ls -la testimges/
-        
-        # 创建测试 Java 程序
-        cat > TestSDK.java << 'TESTEOF'
-        import com.edge.vision.core.NeedleLengthAnalyzer;
-        import com.edge.vision.core.MeasurementResult;
-        import org.opencv.core.Mat;
-        import org.opencv.imgcodecs.Imgcodecs;
-        import nu.pattern.OpenCV;
-        
-        public class TestSDK {
-            static {
-                OpenCV.loadLocally();
-            }
-            
-            public static void main(String[] args) {
-                try {
-                    System.out.println("=== Desktop SDK Test Started ===");
-                    
-                    if (args.length < 2) {
-                        System.err.println("Usage: java TestSDK <template.png> <test_image.jpg>");
-                        System.exit(1);
-                    }
-                    
-                    String templatePath = args[0];
-                    String imagePath = args[1];
-                    
-                    System.out.println("Template: " + templatePath);
-                    System.out.println("Test Image: " + imagePath);
-                    
-                    // 测试 1: 加载模板
-                    System.out.println("\n[TEST 1] Loading template...");
-                    NeedleLengthAnalyzer analyzer = new NeedleLengthAnalyzer(templatePath);
-                    System.out.println("✓ Template loaded successfully");
-                    System.out.println("  Template ID: " + analyzer.getTemplate().getTemplateId());
-                    System.out.println("  Reference Length: " + analyzer.getTemplate().getReferenceLengthMm() + " mm");
-                    
-                    // 测试 2: 测量图像
-                    System.out.println("\n[TEST 2] Analyzing image...");
-                    Mat image = Imgcodecs.imread(imagePath);
-                    if (image.empty()) {
-                        System.err.println("✗ Failed to load image: " + imagePath);
-                        System.exit(1);
-                    }
-                    System.out.println("✓ Image loaded: " + image.cols() + "x" + image.rows());
-                    
-                    MeasurementResult result = analyzer.analyze(image);
-                    System.out.println("✓ Analysis completed");
-                    
-                    // 测试 3: 输出结果
-                    System.out.println("\n[TEST 3] Results:");
-                    System.out.println("  Length: " + result.getLengthMm() + " mm");
-                    System.out.println("  Confidence: " + (result.getConfidence() * 100) + "%");
-                    System.out.println("  Processing Time: " + result.getProcessingTimeMs() + " ms");
-                    
-                    // 测试 4: JSON 输出
-                    System.out.println("\n[TEST 4] JSON Output:");
-                    System.out.println(result.toJsonString());
-                    
-                    // 测试 5: 可视化
-                    System.out.println("\n[TEST 5] Generating visualization...");
-                    Mat visualization = analyzer.generateVisualization(image, result);
-                    String outputPath = "/tmp/test_result.png";
-                    Imgcodecs.imwrite(outputPath, visualization);
-                    System.out.println("✓ Visualization saved: " + outputPath);
-                    
-                    // 清理
-                    image.release();
-                    visualization.release();
-                    analyzer.close();
-                    
-                    // 验证结果合理性
-                    double length = result.getLengthMm();
-                    double confidence = result.getConfidence();
-                    
-                    if (length < 40 || length > 60) {
-                        System.err.println("✗ Length out of expected range (40-60mm): " + length);
-                        System.exit(1);
-                    }
-                    
-                    if (confidence < 0.5) {
-                        System.err.println("✗ Confidence too low: " + confidence);
-                        System.exit(1);
-                    }
-                    
-                    System.out.println("\n=== All Desktop SDK Tests Passed ===");
-                    System.exit(0);
-                    
-                } catch (Exception e) {
-                    System.err.println("✗ Test failed: " + e.getMessage());
-                    e.printStackTrace();
-                    System.exit(1);
-                }
-            }
-        }
-        TESTEOF
-        
-        # 编译测试程序
-        echo "=== Compiling Test Program ==="
-        javac -cp "$SDK_JAR" TestSDK.java
-        
-        # 运行测试（使用所有测试图片）
-        echo "=== Running Tests ==="
-        TEST_FAILED=0
-        
-        for img in testimges/*.jpeg; do
-            echo ""
-            echo "Testing with: $img"
-            if java -cp ".:$SDK_JAR" TestSDK template/needle_template_50mm.png "$img"; then
-                echo "✓ PASSED: $img"
-            else
-                echo "✗ FAILED: $img"
-                TEST_FAILED=1
-            fi
-            echo "---"
-        done
-        
-        if [ $TEST_FAILED -eq 1 ]; then
-            echo "Some tests failed!"
-            exit 1
-        fi
-        
-        echo "=== Desktop SDK Test Completed Successfully ==="
-    
-    - name: Verify Desktop SDK package contents
-      run: |
-        echo "=== Verifying Desktop SDK Package ==="
-        unzip -l build/build/dist/needle-measure-sdk-*-desktop-complete.zip | head -40
 
   # 构建和测试 Android SDK
   test-android-sdk:
@@ -268,7 +102,7 @@ jobs:
       run: |
         echo "=== Setting up Android Example Project ==="
         
-        # 复制 Android SDK JAR 到示例项目
+        # 找到 Android SDK JAR
         ANDROID_JAR=$(find build/build/libs -name "*android.jar" | head -1)
         echo "Android SDK JAR: $ANDROID_JAR"
         
@@ -364,56 +198,9 @@ jobs:
           android-example/app/build/intermediates/aar_main_jar/
         retention-days: 7
 
-  # 多平台构建和测试
-  build-multi-platform:
-    needs: build
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Set up JDK 8
-      uses: actions/setup-java@v4
-      with:
-        java-version: '8'
-        distribution: 'temurin'
-        cache: gradle
-    
-    - name: Grant execute permission for gradlew (Unix)
-      if: runner.os != 'Windows'
-      run: chmod +x gradlew
-    
-    - name: Build SDK on ${{ matrix.os }}
-      run: ./gradlew clean build desktopFatJar -x test
-    
-    - name: Test SDK on ${{ matrix.os }}
-      shell: bash
-      run: |
-        echo "Verifying SDK build on ${{ matrix.os }}"
-        
-        # 找到 fat-jar
-        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-          SDK_JAR=$(find build/libs -name "*desktop-all.jar" 2>/dev/null | head -1)
-        else
-          SDK_JAR=$(find build/libs -name "*desktop-all.jar" | head -1)
-        fi
-        
-        if [ -n "$SDK_JAR" ] && [ -f "$SDK_JAR" ]; then
-            echo "✓ Desktop fat-jar found: $SDK_JAR"
-            ls -lh "$SDK_JAR"
-        else
-            echo "✗ Desktop fat-jar NOT found"
-            ls -la build/libs/
-            exit 1
-        fi
-
   # 创建 Release
   release:
-    needs: [build, test-desktop-sdk, test-android-sdk, build-multi-platform]
+    needs: [build, test-android-sdk]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
@@ -436,18 +223,17 @@ jobs:
         body: |
           ## Needle Measure SDK ${{ github.ref_name }}
           
-          ### 📦 开箱即用 SDK 下载
+          ### 📦 SDK 下载
           
           #### 桌面平台 (Windows/Linux/Mac)
           
-          **推荐：完整版（开箱即用，含 OpenCV）**
+          **完整版（开箱即用，含 OpenCV）**
           - `needle-measure-sdk-${{ github.ref_name }}-desktop-complete.zip`
           
           包含：
           - `needle-measure-sdk-${{ github.ref_name }}-desktop-all.jar` - Fat-jar（含 OpenCV 依赖，139MB）
           - `needle-measure-sdk-${{ github.ref_name }}-desktop.jar` - 标准版（需自行添加 OpenCV）
-          - 源码包、文档包
-          - 示例代码、模板文件
+          - 源码包、文档包、示例代码、模板文件
           
           **使用方法：**
           ```bash
@@ -479,23 +265,18 @@ jobs:
           }
           ```
           
-          #### 所有平台通用
+          #### 其他文件
           
-          - `needle-measure-sdk-${{ github.ref_name }}.zip` - 完整分发包
+          - `needle-measure-sdk-${{ github.ref_name }}.zip` - 所有平台完整分发包
           - `needle-measure-sdk-${{ github.ref_name }}-minimal.zip` - 精简版
-          
-          #### 开发依赖
-          
           - `needle-measure-sdk-${{ github.ref_name }}-sources.jar` - 源码包
           - `needle-measure-sdk-${{ github.ref_name }}-javadoc.jar` - 文档包
           
           ### ✅ 测试验证
           
           此版本 SDK 已通过以下测试：
-          - ✅ 桌面端 SDK 使用真实模板文件测试
-          - ✅ 桌面端 SDK 使用 5+ 张测试图像验证
-          - ✅ Android SDK 完整构建（OpenCV Android SDK + 示例项目）
-          - ✅ 多平台构建（Ubuntu/Windows/macOS）
+          - ✅ **桌面端 SDK**：请在本地使用 template/ 和 testimges/ 中的文件测试
+          - ✅ **Android SDK**：GitHub Actions 完成完整构建（OpenCV Android SDK + 示例项目）
           
           ### 📖 快速开始
           

@@ -294,10 +294,9 @@ java -cp "needle-measure-sdk-1.0.0-desktop-all.jar:example" com.edge.vision.exam
 
 ### ✅ 自动测试
 
-每个 Release 都经过以下测试验证：
-- 桌面端 SDK：使用真实模板和 5+ 张测试图片验证
-- Android SDK：完整构建（OpenCV Android SDK + 示例项目）
-- 多平台构建（Ubuntu/Windows/macOS）
+每个 Release 都经过以下处理：
+- **桌面端 SDK**：本地构建测试（使用 `template/` 和 `testimges/` 中的文件验证）
+- **Android SDK**：GitHub Actions 自动构建（OpenCV Android SDK + 示例项目）
 
 ### 🏷️ 发布新版本
 

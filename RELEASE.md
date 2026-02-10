@@ -83,12 +83,23 @@ git push origin v1.0.1
 - JSON 序列化 ✅
 - 可视化生成 ✅
 
-### Android SDK 测试
+### Android SDK 测试（GitHub Actions 自动完成）
 1. **结构完整性测试** - 验证 JAR 包含所有必要类
 2. **完整构建测试** - 使用 Android SDK + OpenCV Android SDK 构建示例项目
-3. **包内容验证** - 确保模板文件包含在分发包中
+3. **APK 生成验证** - 确保能成功构建 APK
+4. **包内容验证** - 确保模板文件包含在分发包中
 
-**注意：** Android SDK 的功能测试（实际测量）需要模拟器或真机运行 APK。GitHub Actions 已完成构建验证，功能测试请下载后在本地进行。
+### 桌面端 SDK 测试（本地进行）
+桌面端 SDK 请在本地使用以下文件测试：
+- **模板文件**：`template/needle_template_50mm.png`
+- **测试图片**：`testimges/` 目录下的 5+ 张测试图片
+
+**本地测试命令：**
+```bash
+./gradlew desktopFatJar
+java -cp "build/libs/needle-measure-sdk-1.0.0-desktop-all.jar:example" \
+    com.edge.vision.example.DesktopExample
+```
 
 ## 📋 CI/CD 流程说明
 
