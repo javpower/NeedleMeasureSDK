@@ -3,9 +3,4 @@ plugins {
     id 'com.android.application' version '8.2.0' apply false
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
+// 注意：仓库配置在 settings.gradle 中统一管理
